@@ -25,7 +25,6 @@ export function getPeriodContext(
   to: Date | null
 ): PeriodContext {
   const now = new Date();
-  const isCurrentMonth = preset === 'current-month';
 
   switch (preset) {
     case 'current-month':

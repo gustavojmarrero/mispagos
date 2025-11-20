@@ -26,7 +26,6 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
 
   const getPresetDates = (preset: DateRangePreset): { from: Date | null; to: Date | null } => {
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
     switch (preset) {
       case 'current-month': {
