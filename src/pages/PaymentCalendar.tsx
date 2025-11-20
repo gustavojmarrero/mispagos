@@ -116,12 +116,11 @@ export function PaymentCalendar() {
       const instancesQuery = query(
         collection(db, 'payment_instances'),
         where('householdId', '==', currentUser.householdId),
-        where('dueDate', '>=', Timestamp.fromDate(currentMonthStart)),
-        where('dueDate', '<=', Timestamp.fromDate(nextMonthEnd))
+        where('dueDate', '>=', Timestamp.fromDate(currentMonthStart))
       );
 
       const snapshot = await getDocs(instancesQuery);
-      const instancesData = snapshot.docs.map((doc) => ({
+      let instancesData = snapshot.docs.map((doc) => ({
         ...doc.data(),
         id: doc.id,
         dueDate: doc.data().dueDate?.toDate() || new Date(),
@@ -129,6 +128,11 @@ export function PaymentCalendar() {
         createdAt: doc.data().createdAt?.toDate() || new Date(),
         updatedAt: doc.data().updatedAt?.toDate() || new Date(),
       })) as PaymentInstance[];
+
+      // Filtrar por rango superior en el cliente
+      instancesData = instancesData.filter(
+        (instance) => instance.dueDate <= nextMonthEnd
+      );
 
       // Ordenar por fecha
       instancesData.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
