@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,11 +9,19 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { LogIn } from 'lucide-react';
 
 export function LoginForm() {
-  const { signIn } = useAuth();
+  const { signIn, currentUser, loading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Redirigir al dashboard si el usuario ya está autenticado
+  useEffect(() => {
+    if (!authLoading && currentUser) {
+      navigate('/', { replace: true });
+    }
+  }, [currentUser, authLoading, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,6 +30,7 @@ export function LoginForm() {
 
     try {
       await signIn(email, password);
+      // La redirección se maneja automáticamente en el useEffect
     } catch (err) {
       setError('Error al iniciar sesión. Verifica tus credenciales.');
       console.error(err);
