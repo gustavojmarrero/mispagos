@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { LayoutDashboard, CreditCard, Receipt, Calendar, Building2, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, CreditCard, Receipt, Calendar, Building2, LogOut, Menu } from 'lucide-react';
 
 export function Layout() {
   const { currentUser, signOut } = useAuth();
