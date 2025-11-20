@@ -14,6 +14,7 @@ import { db } from '@/lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBanks } from '@/hooks/useBanks';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +22,7 @@ import { InputWithCopy } from '@/components/ui/input-with-copy';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { CardSkeletonGrid } from '@/components/CardSkeleton';
 import {
   formatCurrency,
   formatCurrencyInput,
@@ -45,6 +47,7 @@ import {
   DollarSign,
   User,
   Search,
+  Loader2,
 } from 'lucide-react';
 
 export function Cards() {
@@ -52,6 +55,7 @@ export function Cards() {
   const { banks } = useBanks();
   const [cards, setCards] = useState<CardType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCard, setEditingCard] = useState<CardType | null>(null);
   const [formData, setFormData] = useState<CardFormData>({
@@ -139,13 +143,14 @@ export function Cards() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser) return;
+    if (!currentUser || saving) return;
 
     if (formData.clabeAccount && !isValidCLABE(formData.clabeAccount)) {
-      alert('La cuenta CLABE debe tener exactamente 18 dígitos');
+      toast.error('La cuenta CLABE debe tener exactamente 18 dígitos');
       return;
     }
 
+    setSaving(true);
     try {
       // Preparar datos sin formato para guardar en la base de datos
       const dataToSave = {
@@ -162,6 +167,7 @@ export function Cards() {
           updatedBy: currentUser.id,
           updatedByName: currentUser.name,
         });
+        toast.success('Tarjeta actualizada exitosamente');
       } else {
         await addDoc(collection(db, 'cards'), {
           ...dataToSave,
@@ -174,12 +180,16 @@ export function Cards() {
           updatedBy: currentUser.id,
           updatedByName: currentUser.name,
         });
+        toast.success('Tarjeta creada exitosamente');
       }
 
       resetForm();
       await fetchCards();
     } catch (error) {
       console.error('Error saving card:', error);
+      toast.error('Error al guardar la tarjeta');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -208,9 +218,11 @@ export function Cards() {
 
     try {
       await deleteDoc(doc(db, 'cards', cardId));
+      toast.success('Tarjeta eliminada exitosamente');
       await fetchCards();
     } catch (error) {
       console.error('Error deleting card:', error);
+      toast.error('Error al eliminar la tarjeta');
     }
   };
 
@@ -276,8 +288,14 @@ export function Cards() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Tarjetas</h2>
+            <p className="text-sm sm:text-base text-muted-foreground">Gestiona tus tarjetas de crédito</p>
+          </div>
+        </div>
+        <CardSkeletonGrid count={6} />
       </div>
     );
   }
@@ -566,11 +584,18 @@ export function Cards() {
               </div>
 
               <div className="flex flex-col sm:flex-row justify-end gap-2">
-                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto">
+                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto" disabled={saving}>
                   Cancelar
                 </Button>
-                <Button type="submit" className="w-full sm:w-auto">
-                  {editingCard ? 'Actualizar' : 'Guardar'}
+                <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    editingCard ? 'Actualizar' : 'Guardar'
+                  )}
                 </Button>
               </div>
             </form>

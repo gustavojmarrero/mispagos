@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   collection,
   query,
@@ -14,6 +14,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServices } from '@/hooks/useServices';
 import { generateCurrentAndNextMonthInstances } from '@/lib/paymentInstances';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +45,8 @@ import {
   Calendar,
   DollarSign,
   Banknote,
+  Search,
+  Loader2,
 } from 'lucide-react';
 
 const DAYS_OF_WEEK = [
@@ -92,8 +95,11 @@ export function Payments() {
   const [payments, setPayments] = useState<ScheduledPayment[]>([]);
   const [cards, setCards] = useState<CardType[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<ScheduledPayment | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'description' | 'amount' | 'type' | 'status'>('description');
   const [formData, setFormData] = useState<ScheduledPaymentFormData>({
     paymentType: 'service_payment',
     frequency: 'monthly',
@@ -154,16 +160,7 @@ export function Payments() {
         paymentDate: doc.data().paymentDate?.toDate(),
       })) as ScheduledPayment[];
 
-      setPayments(paymentsData.sort((a, b) => {
-        // Ordenar por paymentDate, dueDay o dayOfWeek
-        if (a.paymentDate && b.paymentDate) {
-          return a.paymentDate.getTime() - b.paymentDate.getTime();
-        }
-        if (a.frequency === 'weekly' && b.frequency === 'weekly') {
-          return (a.dayOfWeek || 0) - (b.dayOfWeek || 0);
-        }
-        return (a.dueDay || 0) - (b.dueDay || 0);
-      }));
+      setPayments(paymentsData);
     } catch (error) {
       console.error('Error fetching payments:', error);
     } finally {
@@ -173,28 +170,29 @@ export function Payments() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser) return;
+    if (!currentUser || saving) return;
 
     // Validaciones
     if (formData.paymentType === 'card_payment' && !formData.cardId) {
-      alert('Selecciona una tarjeta');
+      toast.error('Selecciona una tarjeta');
       return;
     }
     if (formData.paymentType === 'service_payment' && !formData.serviceId) {
-      alert('Selecciona un servicio');
+      toast.error('Selecciona un servicio');
       return;
     }
     if (formData.paymentType === 'service_payment' && !formData.description) {
-      alert('Ingresa una descripción');
+      toast.error('Ingresa una descripción');
       return;
     }
 
     // Validar fecha para pagos a tarjetas
     if (formData.paymentType === 'card_payment' && !formData.paymentDate) {
-      alert('Ingresa la fecha de pago en formato DD/MM/YYYY');
+      toast.error('Ingresa la fecha de pago en formato DD/MM/YYYY');
       return;
     }
 
+    setSaving(true);
     try {
       // Auto-generar descripción para pagos a tarjetas
       let description = formData.description;
@@ -226,6 +224,7 @@ export function Payments() {
           updatedByName: currentUser.name,
         });
         savedPaymentId = editingPayment.id;
+        toast.success('Pago actualizado exitosamente');
       } else {
         const docRef = await addDoc(collection(db, 'scheduled_payments'), {
           ...dataToSave,
@@ -239,6 +238,7 @@ export function Payments() {
           updatedByName: currentUser.name,
         });
         savedPaymentId = docRef.id;
+        toast.success('Pago creado exitosamente');
       }
 
       // Generar instancias automáticamente
@@ -261,14 +261,16 @@ export function Payments() {
         console.log('[Payments] Instancias generadas exitosamente');
       } catch (instanceError) {
         console.error('[Payments] Error generando instancias:', instanceError);
-        // No fallar todo el guardado si solo falla la generación de instancias
+        toast.warning('El pago se guardó pero hubo un problema al generar las instancias');
       }
 
       resetForm();
       await fetchPayments();
     } catch (error) {
       console.error('[Payments] Error saving payment:', error);
-      alert('Error al guardar el pago. Revisa la consola para más detalles.');
+      toast.error('Error al guardar el pago');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -298,9 +300,11 @@ export function Payments() {
 
     try {
       await deleteDoc(doc(db, 'scheduled_payments', paymentId));
+      toast.success('Pago eliminado exitosamente');
       await fetchPayments();
     } catch (error) {
       console.error('Error deleting payment:', error);
+      toast.error('Error al eliminar el pago');
     }
   };
 
@@ -310,9 +314,11 @@ export function Payments() {
         isActive: !payment.isActive,
         updatedAt: serverTimestamp(),
       });
+      toast.success(payment.isActive ? 'Pago desactivado' : 'Pago activado');
       await fetchPayments();
     } catch (error) {
       console.error('Error toggling payment:', error);
+      toast.error('Error al cambiar el estado del pago');
     }
   };
 
@@ -392,6 +398,40 @@ export function Payments() {
     const ordinal = getOrdinal(paymentNumber);
     return `Pago para no generar intereses ${month}/${year} - ${ordinal} pago`;
   };
+
+  // Filter and sort payments
+  const filteredAndSortedPayments = useMemo(() => {
+    let filtered = payments;
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter((payment) => {
+        const searchLower = searchTerm.toLowerCase();
+        const descriptionMatch = payment.description.toLowerCase().includes(searchLower);
+        const cardMatch = payment.cardId && getCardName(payment.cardId).toLowerCase().includes(searchLower);
+        const serviceMatch = payment.serviceId && getServiceName(payment.serviceId).toLowerCase().includes(searchLower);
+        return descriptionMatch || cardMatch || serviceMatch;
+      });
+    }
+
+    // Apply sorting
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case 'description':
+          return a.description.localeCompare(b.description);
+        case 'amount':
+          return b.amount - a.amount; // Mayor a menor
+        case 'type':
+          return a.paymentType.localeCompare(b.paymentType);
+        case 'status':
+          return (b.isActive ? 1 : 0) - (a.isActive ? 1 : 0); // Activos primero
+        default:
+          return 0;
+      }
+    });
+
+    return sorted;
+  }, [payments, searchTerm, sortBy, cards, services]);
 
   if (loading) {
     return (
@@ -646,11 +686,18 @@ export function Payments() {
               </div>
 
               <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto">
+                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto" disabled={saving}>
                   Cancelar
                 </Button>
-                <Button type="submit" className="w-full sm:w-auto">
-                  {editingPayment ? 'Actualizar' : 'Guardar'}
+                <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    editingPayment ? 'Actualizar' : 'Guardar'
+                  )}
                 </Button>
               </div>
             </form>
@@ -658,18 +705,71 @@ export function Payments() {
         </Card>
       )}
 
+      {/* Search and Filter */}
+      <Card className="shadow-sm">
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Buscar pagos..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={sortBy} onValueChange={(value: 'description' | 'amount' | 'type' | 'status') => setSortBy(value)}>
+              <SelectTrigger className="w-full sm:w-56">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="description">Ordenar por nombre</SelectItem>
+                <SelectItem value="amount">Ordenar por monto</SelectItem>
+                <SelectItem value="type">Ordenar por tipo</SelectItem>
+                <SelectItem value="status">Ordenar por estado</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {searchTerm && (
+            <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <span>
+                {filteredAndSortedPayments.length} de {payments.length} pagos
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSearchTerm('')}
+                className="h-auto p-1"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Payments List */}
       <div className="space-y-4">
-        {payments.length === 0 ? (
+        {filteredAndSortedPayments.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Receipt className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No hay pagos programados</p>
-              <p className="text-sm text-muted-foreground">Haz clic en "Nuevo Pago" para agregar uno</p>
+              {payments.length === 0 ? (
+                <>
+                  <p className="text-muted-foreground">No hay pagos programados</p>
+                  <p className="text-sm text-muted-foreground">Haz clic en "Nuevo Pago" para agregar uno</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-muted-foreground">No se encontraron pagos</p>
+                  <p className="text-sm text-muted-foreground">Intenta con otros términos de búsqueda</p>
+                </>
+              )}
             </CardContent>
           </Card>
         ) : (
-          payments.map((payment) => {
+          filteredAndSortedPayments.map((payment) => {
             const Icon = payment.paymentType === 'card_payment' ? CreditCard : Store;
             // Los pagos a tarjetas de crédito se realizan con transferencia
             // Solo los servicios pueden pagarse con tarjeta

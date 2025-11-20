@@ -15,6 +15,7 @@ import { CardPeriodAnalysisCard } from '@/components/CardPeriodAnalysisCard';
 import { SmartAlertsList } from '@/components/SmartAlertsList';
 import { WeeklyTimeline } from '@/components/WeeklyTimeline';
 import { DateRangeFilter, type DateRange } from '@/components/dashboard/DateRangeFilter';
+import { DashboardSkeleton } from '@/components/DashboardSkeleton';
 import { motion } from 'framer-motion';
 import { staggerContainer, staggerItem } from '@/utils/animations';
 import { getPeriodContext } from '@/utils/periodContext';
@@ -149,11 +150,7 @@ export function Dashboard() {
   );
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (

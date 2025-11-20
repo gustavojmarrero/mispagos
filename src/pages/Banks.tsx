@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   collection,
   query,
@@ -12,19 +12,30 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { Bank, BankFormData } from '@/lib/types';
-import { Building2, Edit, Trash2, Plus, X } from 'lucide-react';
+import { Building2, Edit, Trash2, Plus, X, Search, Loader2 } from 'lucide-react';
 
 export function Banks() {
   const { currentUser } = useAuth();
   const [banks, setBanks] = useState<Bank[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingBank, setEditingBank] = useState<Bank | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'code'>('name');
   const [formData, setFormData] = useState<BankFormData>({
     name: '',
     code: '',
@@ -50,7 +61,7 @@ export function Banks() {
         updatedAt: doc.data().updatedAt?.toDate() || new Date(),
       })) as Bank[];
 
-      setBanks(banksData.sort((a, b) => a.name.localeCompare(b.name)));
+      setBanks(banksData);
     } catch (error) {
       console.error('Error fetching banks:', error);
     } finally {
@@ -60,8 +71,9 @@ export function Banks() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser) return;
+    if (!currentUser || saving) return;
 
+    setSaving(true);
     try {
       if (editingBank) {
         // Update
@@ -71,6 +83,7 @@ export function Banks() {
           updatedBy: currentUser.id,
           updatedByName: currentUser.name,
         });
+        toast.success('Banco actualizado exitosamente');
       } else {
         // Create
         await addDoc(collection(db, 'banks'), {
@@ -84,12 +97,16 @@ export function Banks() {
           updatedBy: currentUser.id,
           updatedByName: currentUser.name,
         });
+        toast.success('Banco creado exitosamente');
       }
 
       resetForm();
       await fetchBanks();
     } catch (error) {
       console.error('Error saving bank:', error);
+      toast.error('Error al guardar el banco');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -108,9 +125,11 @@ export function Banks() {
     try {
       // TODO: Verificar que no haya tarjetas asociadas
       await deleteDoc(doc(db, 'banks', bankId));
+      toast.success('Banco eliminado exitosamente');
       await fetchBanks();
     } catch (error) {
       console.error('Error deleting bank:', error);
+      toast.error('Error al eliminar el banco');
     }
   };
 
@@ -122,6 +141,34 @@ export function Banks() {
     setEditingBank(null);
     setShowForm(false);
   };
+
+  // Filter and sort banks
+  const filteredAndSortedBanks = useMemo(() => {
+    let filtered = banks;
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (bank) =>
+          bank.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (bank.code && bank.code.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+    }
+
+    // Apply sorting
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'code':
+          return (a.code || '').localeCompare(b.code || '');
+        default:
+          return 0;
+      }
+    });
+
+    return sorted;
+  }, [banks, searchTerm, sortBy]);
 
   if (loading) {
     return (
@@ -179,11 +226,18 @@ export function Banks() {
               </div>
 
               <div className="flex flex-col sm:flex-row justify-end gap-2">
-                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto">
+                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto" disabled={saving}>
                   Cancelar
                 </Button>
-                <Button type="submit" className="w-full sm:w-auto">
-                  {editingBank ? 'Actualizar' : 'Guardar'}
+                <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    editingBank ? 'Actualizar' : 'Guardar'
+                  )}
                 </Button>
               </div>
             </form>
@@ -191,18 +245,69 @@ export function Banks() {
         </Card>
       )}
 
+      {/* Search and Filter */}
+      <Card className="shadow-sm">
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Buscar bancos..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={sortBy} onValueChange={(value: 'name' | 'code') => setSortBy(value)}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Ordenar por nombre</SelectItem>
+                <SelectItem value="code">Ordenar por código</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {searchTerm && (
+            <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <span>
+                {filteredAndSortedBanks.length} de {banks.length} bancos
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSearchTerm('')}
+                className="h-auto p-1"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Banks List */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {banks.length === 0 ? (
+        {filteredAndSortedBanks.length === 0 ? (
           <Card className="col-span-full">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No hay bancos registrados</p>
-              <p className="text-sm text-muted-foreground">Haz clic en "Nuevo Banco" para agregar uno</p>
+              {banks.length === 0 ? (
+                <>
+                  <p className="text-muted-foreground">No hay bancos registrados</p>
+                  <p className="text-sm text-muted-foreground">Haz clic en "Nuevo Banco" para agregar uno</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-muted-foreground">No se encontraron bancos</p>
+                  <p className="text-sm text-muted-foreground">Intenta con otros términos de búsqueda</p>
+                </>
+              )}
             </CardContent>
           </Card>
         ) : (
-          banks.map((bank) => (
+          filteredAndSortedBanks.map((bank) => (
             <Card key={bank.id}>
               <CardHeader>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">

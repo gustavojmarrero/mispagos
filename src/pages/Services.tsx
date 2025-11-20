@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   collection,
   query,
@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,14 +25,17 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Service, ServiceFormData, PaymentMethod } from '@/lib/types';
-import { Store, Edit, Trash2, Plus, X, CreditCard, Banknote } from 'lucide-react';
+import { Store, Edit, Trash2, Plus, X, CreditCard, Banknote, Search, Loader2 } from 'lucide-react';
 
 export function Services() {
   const { currentUser } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'method'>('name');
   const [formData, setFormData] = useState<ServiceFormData>({
     name: '',
     paymentMethod: 'transfer',
@@ -57,7 +61,7 @@ export function Services() {
         updatedAt: doc.data().updatedAt?.toDate() || new Date(),
       })) as Service[];
 
-      setServices(servicesData.sort((a, b) => a.name.localeCompare(b.name)));
+      setServices(servicesData);
     } catch (error) {
       console.error('Error fetching services:', error);
     } finally {
@@ -67,8 +71,9 @@ export function Services() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser) return;
+    if (!currentUser || saving) return;
 
+    setSaving(true);
     try {
       if (editingService) {
         // Update
@@ -78,6 +83,7 @@ export function Services() {
           updatedBy: currentUser.id,
           updatedByName: currentUser.name,
         });
+        toast.success('Servicio actualizado exitosamente');
       } else {
         // Create
         await addDoc(collection(db, 'services'), {
@@ -91,12 +97,16 @@ export function Services() {
           updatedBy: currentUser.id,
           updatedByName: currentUser.name,
         });
+        toast.success('Servicio creado exitosamente');
       }
 
       resetForm();
       await fetchServices();
     } catch (error) {
       console.error('Error saving service:', error);
+      toast.error('Error al guardar el servicio');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -114,9 +124,11 @@ export function Services() {
 
     try {
       await deleteDoc(doc(db, 'services', serviceId));
+      toast.success('Servicio eliminado exitosamente');
       await fetchServices();
     } catch (error) {
       console.error('Error deleting service:', error);
+      toast.error('Error al eliminar el servicio');
     }
   };
 
@@ -136,6 +148,32 @@ export function Services() {
   const getPaymentMethodIcon = (method: PaymentMethod) => {
     return method === 'card' ? CreditCard : Banknote;
   };
+
+  // Filter and sort services
+  const filteredAndSortedServices = useMemo(() => {
+    let filtered = services;
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter((service) =>
+        service.name.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+
+    // Apply sorting
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'method':
+          return a.paymentMethod.localeCompare(b.paymentMethod);
+        default:
+          return 0;
+      }
+    });
+
+    return sorted;
+  }, [services, searchTerm, sortBy]);
 
   if (loading) {
     return (
@@ -200,11 +238,18 @@ export function Services() {
               </div>
 
               <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto">
+                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto" disabled={saving}>
                   Cancelar
                 </Button>
-                <Button type="submit" className="w-full sm:w-auto">
-                  {editingService ? 'Actualizar' : 'Guardar'}
+                <Button type="submit" className="w-full sm:w-auto" disabled={saving}>
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    editingService ? 'Actualizar' : 'Guardar'
+                  )}
                 </Button>
               </div>
             </form>
@@ -212,18 +257,69 @@ export function Services() {
         </Card>
       )}
 
+      {/* Search and Filter */}
+      <Card className="shadow-sm">
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Buscar servicios..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={sortBy} onValueChange={(value: 'name' | 'method') => setSortBy(value)}>
+              <SelectTrigger className="w-full sm:w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="name">Ordenar por nombre</SelectItem>
+                <SelectItem value="method">Ordenar por método</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {searchTerm && (
+            <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+              <span>
+                {filteredAndSortedServices.length} de {services.length} servicios
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSearchTerm('')}
+                className="h-auto p-1"
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Services List */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {services.length === 0 ? (
+        {filteredAndSortedServices.length === 0 ? (
           <Card className="col-span-full">
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Store className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No hay servicios registrados</p>
-              <p className="text-sm text-muted-foreground">Haz clic en "Nuevo Servicio" para agregar uno</p>
+              {services.length === 0 ? (
+                <>
+                  <p className="text-muted-foreground">No hay servicios registrados</p>
+                  <p className="text-sm text-muted-foreground">Haz clic en "Nuevo Servicio" para agregar uno</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-muted-foreground">No se encontraron servicios</p>
+                  <p className="text-sm text-muted-foreground">Intenta con otros términos de búsqueda</p>
+                </>
+              )}
             </CardContent>
           </Card>
         ) : (
-          services.map((service) => {
+          filteredAndSortedServices.map((service) => {
             const PaymentIcon = getPaymentMethodIcon(service.paymentMethod);
             return (
               <Card
