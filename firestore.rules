@@ -7,16 +7,24 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function isInHousehold(householdId) {
-      return isAuthenticated() && getUserData().householdId == householdId;
-    }
-
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function canAccessHousehold(householdId) {
+      // Permitir acceso si el usuario es miembro del household
+      // Verificamos si existe un documento de usuario con el householdId correcto
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.householdId == householdId;
+    }
+
+    function canAccessResource(data) {
+      // Permitir acceso por userId (compatibilidad hacia atrás) O por householdId
+      return isAuthenticated() && (
+        data.userId == request.auth.uid ||
+        canAccessHousehold(data.householdId)
+      );
     }
 
     // Users collection
@@ -26,58 +34,82 @@ service cloud.firestore {
 
     // Cards collection
     match /cards/{cardId} {
-      allow read: if isAuthenticated() && isInHousehold(resource.data.householdId);
-      allow create: if isAuthenticated() && isInHousehold(request.resource.data.householdId);
-      allow update, delete: if isAuthenticated() && isInHousehold(resource.data.householdId);
+      allow read: if canAccessResource(resource.data);
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        canAccessHousehold(request.resource.data.householdId)
+      );
+      allow update, delete: if canAccessResource(resource.data);
     }
 
     // Services collection
     match /services/{serviceId} {
-      allow read: if isAuthenticated() && isInHousehold(resource.data.householdId);
-      allow create: if isAuthenticated() && isInHousehold(request.resource.data.householdId);
-      allow update, delete: if isAuthenticated() && isInHousehold(resource.data.householdId);
+      allow read: if canAccessResource(resource.data);
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        canAccessHousehold(request.resource.data.householdId)
+      );
+      allow update, delete: if canAccessResource(resource.data);
     }
 
     // Scheduled Payments collection
     match /scheduled_payments/{paymentId} {
-      allow read: if isAuthenticated() && isInHousehold(resource.data.householdId);
-      allow create: if isAuthenticated() && isInHousehold(request.resource.data.householdId);
-      allow update, delete: if isAuthenticated() && isInHousehold(resource.data.householdId);
+      allow read: if canAccessResource(resource.data);
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        canAccessHousehold(request.resource.data.householdId)
+      );
+      allow update, delete: if canAccessResource(resource.data);
     }
 
-    // Payment History collection (tracking de adelantos)
+    // Payment History collection
     match /payment_history/{historyId} {
-      allow read: if isAuthenticated() && isInHousehold(resource.data.householdId);
-      allow create: if isAuthenticated() && isInHousehold(request.resource.data.householdId);
-      allow update, delete: if isAuthenticated() && isInHousehold(resource.data.householdId);
+      allow read: if canAccessResource(resource.data);
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        canAccessHousehold(request.resource.data.householdId)
+      );
+      allow update, delete: if canAccessResource(resource.data);
     }
 
-    // Recurring expenses collection (DEPRECATED - mantener por compatibilidad)
+    // Recurring expenses collection (DEPRECATED)
     match /recurring_expenses/{expenseId} {
-      allow read: if isAuthenticated() && isInHousehold(resource.data.householdId);
-      allow create: if isAuthenticated() && isInHousehold(request.resource.data.householdId);
-      allow update, delete: if isAuthenticated() && isInHousehold(resource.data.householdId);
+      allow read: if canAccessResource(resource.data);
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        canAccessHousehold(request.resource.data.householdId)
+      );
+      allow update, delete: if canAccessResource(resource.data);
     }
 
-    // Payments collection (DEPRECATED - mantener por compatibilidad)
+    // Payments collection (DEPRECATED)
     match /payments/{paymentId} {
-      allow read: if isAuthenticated() && isInHousehold(resource.data.householdId);
-      allow create: if isAuthenticated() && isInHousehold(request.resource.data.householdId);
-      allow update, delete: if isAuthenticated() && isInHousehold(resource.data.householdId);
+      allow read: if canAccessResource(resource.data);
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        canAccessHousehold(request.resource.data.householdId)
+      );
+      allow update, delete: if canAccessResource(resource.data);
     }
 
     // Banks collection
     match /banks/{bankId} {
-      allow read: if isAuthenticated() && isInHousehold(resource.data.householdId);
-      allow create: if isAuthenticated() && isInHousehold(request.resource.data.householdId);
-      allow update, delete: if isAuthenticated() && isInHousehold(resource.data.householdId);
+      allow read: if canAccessResource(resource.data);
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        canAccessHousehold(request.resource.data.householdId)
+      );
+      allow update, delete: if canAccessResource(resource.data);
     }
 
-    // Payment Instances collection (instancias generadas automáticamente)
+    // Payment Instances collection
     match /payment_instances/{instanceId} {
-      allow read: if isAuthenticated() && isInHousehold(resource.data.householdId);
-      allow create: if isAuthenticated() && isInHousehold(request.resource.data.householdId);
-      allow update, delete: if isAuthenticated() && isInHousehold(resource.data.householdId);
+      allow read: if canAccessResource(resource.data);
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        canAccessHousehold(request.resource.data.householdId)
+      );
+      allow update, delete: if canAccessResource(resource.data);
     }
 
     // Deny all other access
