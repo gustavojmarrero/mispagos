@@ -147,12 +147,12 @@ export function Services() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Servicios</h2>
-          <p className="text-muted-foreground">Gestiona los servicios que pagas mensualmente</p>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Servicios</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">Gestiona los servicios que pagas mensualmente</p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
+        <Button onClick={() => setShowForm(!showForm)} className="w-full sm:w-auto">
           {showForm ? <X className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
           {showForm ? 'Cancelar' : 'Nuevo Servicio'}
         </Button>
@@ -162,8 +162,8 @@ export function Services() {
       {showForm && (
         <Card className="shadow-md border-border">
           <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
-            <CardTitle className="text-2xl">{editingService ? 'Editar' : 'Nuevo'} Servicio</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-xl sm:text-2xl">{editingService ? 'Editar' : 'Nuevo'} Servicio</CardTitle>
+            <CardDescription className="text-sm">
               {editingService ? 'Actualiza la información del servicio' : 'Agrega un nuevo servicio'}
             </CardDescription>
           </CardHeader>
@@ -199,11 +199,11 @@ export function Services() {
                 </p>
               </div>
 
-              <div className="flex justify-end space-x-2 pt-4">
-                <Button type="button" variant="outline" onClick={resetForm}>
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto">
                   Cancelar
                 </Button>
-                <Button type="submit">
+                <Button type="submit" className="w-full sm:w-auto">
                   {editingService ? 'Actualizar' : 'Guardar'}
                 </Button>
               </div>
@@ -213,7 +213,7 @@ export function Services() {
       )}
 
       {/* Services List */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {services.length === 0 ? (
           <Card className="col-span-full">
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -228,16 +228,16 @@ export function Services() {
             return (
               <Card
                 key={service.id}
-                className="relative hover:shadow-lg transition-all duration-300 hover:scale-[1.02] border-border"
+                className="relative hover:shadow-lg transition-all duration-300 sm:hover:scale-[1.02] border-border"
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <Store className="h-5 w-5 text-primary" />
-                        <CardTitle className="text-lg font-bold">{service.name}</CardTitle>
+                        <Store className="h-5 w-5 text-primary flex-shrink-0" />
+                        <CardTitle className="text-base sm:text-lg font-bold break-words">{service.name}</CardTitle>
                       </div>
-                      <CardDescription className="flex items-center gap-2 mt-2">
+                      <CardDescription className="flex items-center gap-2 mt-2 text-sm">
                         <PaymentIcon className="h-4 w-4" />
                         <span>{getPaymentMethodLabel(service.paymentMethod)}</span>
                       </CardDescription>
@@ -246,12 +246,12 @@ export function Services() {
                 </CardHeader>
 
                 <CardContent>
-                  <div className="flex justify-end space-x-1">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(service)}>
+                  <div className="flex flex-col sm:flex-row justify-end gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => handleEdit(service)} className="w-full sm:w-auto min-h-[44px]">
                       <Edit className="h-4 w-4 mr-1" />
                       Editar
                     </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(service.id)}>
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(service.id)} className="w-full sm:w-auto min-h-[44px]">
                       <Trash2 className="h-4 w-4 mr-1 text-destructive" />
                       Eliminar
                     </Button>

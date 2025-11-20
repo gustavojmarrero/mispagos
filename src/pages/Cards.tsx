@@ -243,12 +243,12 @@ export function Cards() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Tarjetas</h2>
-          <p className="text-muted-foreground">Gestiona tus tarjetas de crédito</p>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Tarjetas</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">Gestiona tus tarjetas de crédito</p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
+        <Button onClick={() => setShowForm(!showForm)} className="w-full sm:w-auto">
           {showForm ? <X className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
           {showForm ? 'Cancelar' : 'Nueva Tarjeta'}
         </Button>
@@ -258,8 +258,8 @@ export function Cards() {
       {showForm && (
         <Card className="shadow-md border-border">
           <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
-            <CardTitle className="text-2xl">{editingCard ? 'Editar' : 'Nueva'} Tarjeta</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-xl sm:text-2xl">{editingCard ? 'Editar' : 'Nueva'} Tarjeta</CardTitle>
+            <CardDescription className="text-sm">
               {editingCard ? 'Actualiza los datos de tu tarjeta' : 'Agrega una nueva tarjeta de crédito'}
             </CardDescription>
           </CardHeader>
@@ -267,11 +267,11 @@ export function Cards() {
             <form onSubmit={handleSubmit} className="space-y-8">
               {/* Sección 1: Información Básica */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
                   <User className="h-5 w-5" />
                   Información Básica
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Nombre de la tarjeta *</Label>
                     <Input
@@ -328,11 +328,11 @@ export function Cards() {
 
               {/* Sección 2: Números y Cuentas */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
                   <CreditCard className="h-5 w-5" />
                   Números y Cuentas
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="physicalCardNumber">
                       Número tarjeta física
@@ -397,11 +397,11 @@ export function Cards() {
 
               {/* Sección 3: Límites y Fechas */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
                   <DollarSign className="h-5 w-5" />
                   Límites y Fechas
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="creditLimit">Límite de crédito *</Label>
                     <div className="relative">
@@ -516,11 +516,11 @@ export function Cards() {
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={resetForm}>
+              <div className="flex flex-col sm:flex-row justify-end gap-2">
+                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto">
                   Cancelar
                 </Button>
-                <Button type="submit">
+                <Button type="submit" className="w-full sm:w-auto">
                   {editingCard ? 'Actualizar' : 'Guardar'}
                 </Button>
               </div>
@@ -530,7 +530,7 @@ export function Cards() {
       )}
 
       {/* Cards List */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.length === 0 ? (
           <Card className="col-span-full">
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -543,16 +543,16 @@ export function Cards() {
           cards.map((card) => (
             <Card
               key={card.id}
-              className="relative hover:shadow-lg transition-all duration-300 hover:scale-[1.02] border-border"
+              className="relative hover:shadow-lg transition-all duration-300 sm:hover:scale-[1.02] border-border"
             >
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm p-2 rounded-lg shadow-sm">
-                <img src={getCardIcon(card.cardType)} alt={card.cardType} className="h-8 w-auto" />
+              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-white/90 backdrop-blur-sm p-1.5 sm:p-2 rounded-lg shadow-sm">
+                <img src={getCardIcon(card.cardType)} alt={card.cardType} className="h-6 sm:h-8 w-auto" />
               </div>
 
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between pr-12">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg font-bold">{card.name}</CardTitle>
+              <CardHeader className="pb-3 pr-14 sm:pr-16">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-base sm:text-lg font-bold break-words">{card.name}</CardTitle>
                     <CardDescription className="flex items-center gap-2 mt-2 flex-wrap">
                       <span className="font-mono font-medium">**** {card.lastDigits}</span>
                       <Badge variant="outline" className="text-xs font-medium">
@@ -615,12 +615,12 @@ export function Cards() {
                   </p>
                 </div>
 
-                <div className="flex justify-end space-x-1 pt-2">
-                  <Button variant="ghost" size="sm" onClick={() => handleEdit(card)}>
+                <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+                  <Button variant="ghost" size="sm" onClick={() => handleEdit(card)} className="w-full sm:w-auto min-h-[44px]">
                     <Edit className="h-4 w-4 mr-1" />
                     Editar
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(card.id)}>
+                  <Button variant="ghost" size="sm" onClick={() => handleDelete(card.id)} className="w-full sm:w-auto min-h-[44px]">
                     <Trash2 className="h-4 w-4 mr-1 text-destructive" />
                     Eliminar
                   </Button>

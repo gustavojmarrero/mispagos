@@ -20,10 +20,10 @@ export function WeeklyTimeline({ timeline }: WeeklyTimelineProps) {
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-primary" />
-          <CardTitle>Próximos 7 Días</CardTitle>
+          <Calendar className="h-5 w-5 text-primary flex-shrink-0" />
+          <CardTitle className="text-base sm:text-lg">Próximos 7 Días</CardTitle>
         </div>
-        <CardDescription>Vista día por día de pagos pendientes</CardDescription>
+        <CardDescription className="text-sm">Vista día por día de pagos pendientes</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
@@ -42,17 +42,17 @@ export function WeeklyTimeline({ timeline }: WeeklyTimelineProps) {
                     : 'bg-background border-muted/30'
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 gap-2">
+                  <div className="flex items-center gap-3 flex-1">
                     <div className="flex flex-col">
                       <span
-                        className={`text-sm font-semibold ${
+                        className={`text-sm sm:text-base font-semibold ${
                           day.isToday ? 'text-primary' : 'text-foreground'
                         }`}
                       >
                         {day.dayName}
                       </span>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs sm:text-sm text-muted-foreground">
                         {day.date.toLocaleDateString('es-ES', {
                           day: '2-digit',
                           month: 'short',
@@ -66,13 +66,13 @@ export function WeeklyTimeline({ timeline }: WeeklyTimelineProps) {
                     )}
                   </div>
 
-                  <div className="text-right">
+                  <div className="text-left sm:text-right w-full sm:w-auto">
                     {hasPayments ? (
                       <>
-                        <p className="text-lg font-bold">
+                        <p className="text-base sm:text-lg font-bold">
                           {formatCurrency(day.totalAmount)}
                         </p>
-                        <p className="text-xs text-muted-foreground">
+                        <p className="text-xs sm:text-sm text-muted-foreground">
                           {day.instances.length} pago{day.instances.length !== 1 ? 's' : ''}
                         </p>
                       </>
@@ -108,12 +108,12 @@ export function WeeklyTimeline({ timeline }: WeeklyTimelineProps) {
                     {day.instances.slice(0, 3).map((instance) => (
                       <div
                         key={instance.id}
-                        className="flex items-center justify-between text-xs p-2 bg-background rounded border"
+                        className="flex items-center justify-between text-xs sm:text-sm p-2 bg-background rounded border gap-2"
                       >
-                        <span className="truncate flex-1 text-muted-foreground">
+                        <span className="truncate flex-1 text-muted-foreground min-w-0">
                           {instance.description}
                         </span>
-                        <span className="font-semibold ml-2">
+                        <span className="font-semibold ml-2 flex-shrink-0">
                           {formatCurrency(instance.amount)}
                         </span>
                       </div>
@@ -133,10 +133,10 @@ export function WeeklyTimeline({ timeline }: WeeklyTimelineProps) {
         {/* Resumen visual */}
         <div className="mt-4 p-3 bg-muted/30 rounded-lg border">
           <div className="flex items-center gap-2 mb-2">
-            <TrendingUp className="h-4 w-4 text-primary" />
+            <TrendingUp className="h-4 w-4 text-primary flex-shrink-0" />
             <span className="text-sm font-medium">Resumen de la semana</span>
           </div>
-          <div className="grid grid-cols-3 gap-3 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs sm:text-sm">
             <div>
               <p className="text-muted-foreground">Total</p>
               <p className="font-bold">

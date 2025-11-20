@@ -398,12 +398,12 @@ export function Payments() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Pagos Programados</h2>
-          <p className="text-muted-foreground">Gestiona los pagos que debes realizar</p>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Pagos Programados</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">Gestiona los pagos que debes realizar</p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
+        <Button onClick={() => setShowForm(!showForm)} className="w-full sm:w-auto">
           {showForm ? <X className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
           {showForm ? 'Cancelar' : 'Nuevo Pago'}
         </Button>
@@ -413,8 +413,8 @@ export function Payments() {
       {showForm && (
         <Card className="shadow-md border-border">
           <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
-            <CardTitle className="text-2xl">{editingPayment ? 'Editar' : 'Nuevo'} Pago</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-xl sm:text-2xl">{editingPayment ? 'Editar' : 'Nuevo'} Pago</CardTitle>
+            <CardDescription className="text-sm">
               {editingPayment ? 'Actualiza el pago programado' : 'Programa un nuevo pago'}
             </CardDescription>
           </CardHeader>
@@ -422,11 +422,11 @@ export function Payments() {
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Tipo de Pago */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
                   <Receipt className="h-5 w-5" />
                   Tipo de Pago
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="paymentType">Pagar a *</Label>
                     <Select
@@ -497,11 +497,11 @@ export function Payments() {
 
               {/* Detalles */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
                   <DollarSign className="h-5 w-5" />
                   Detalles del Pago
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {formData.paymentType === 'service_payment' && (
                     <div className="space-y-2">
                       <Label htmlFor="description">Descripción *</Label>
@@ -547,14 +547,14 @@ export function Payments() {
 
               {/* Frecuencia / Fecha */}
               <div className="space-y-4">
-                <h3 className="text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
                   <Calendar className="h-5 w-5" />
                   {formData.paymentType === 'card_payment' ? 'Fecha de Pago' : 'Frecuencia'}
                 </h3>
 
                 {formData.paymentType === 'card_payment' ? (
                   // Input de fecha para pagos a tarjetas
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="paymentDate">Fecha de pago (DD/MM/YYYY) *</Label>
                       <Input
@@ -583,7 +583,7 @@ export function Payments() {
                   </div>
                 ) : (
                   // Selector de frecuencia para servicios
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="frequency">Frecuencia *</Label>
                       <Select
@@ -640,11 +640,11 @@ export function Payments() {
                 )}
               </div>
 
-              <div className="flex justify-end space-x-2 pt-4">
-                <Button type="button" variant="outline" onClick={resetForm}>
+              <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
+                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto">
                   Cancelar
                 </Button>
-                <Button type="submit">
+                <Button type="submit" className="w-full sm:w-auto">
                   {editingPayment ? 'Actualizar' : 'Guardar'}
                 </Button>
               </div>
@@ -681,13 +681,13 @@ export function Payments() {
                 }`}
               >
                 <CardContent className="pt-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
+                  <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+                    <div className="flex-1 w-full sm:w-auto">
                       <div className="flex items-center gap-3">
-                        <Icon className="h-5 w-5 text-primary" />
-                        <div>
-                          <h3 className="font-semibold text-lg">{payment.description}</h3>
-                          <p className="text-sm text-muted-foreground">
+                        <Icon className="h-5 w-5 text-primary flex-shrink-0" />
+                        <div className="min-w-0">
+                          <h3 className="font-semibold text-base sm:text-lg break-words">{payment.description}</h3>
+                          <p className="text-xs sm:text-sm text-muted-foreground break-words">
                             {payment.paymentType === 'card_payment'
                               ? `Tarjeta: ${getCardName(payment.cardId || '')}`
                               : `Servicio: ${getServiceName(payment.serviceId || '')}`}
@@ -695,37 +695,37 @@ export function Payments() {
                         </div>
                       </div>
 
-                      <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div>
-                          <p className="text-xs text-muted-foreground">Monto</p>
-                          <p className="font-semibold">{formatCurrency(payment.amount)}</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground">Monto</p>
+                          <p className="font-semibold text-base sm:text-lg">{formatCurrency(payment.amount)}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs sm:text-sm text-muted-foreground">
                             {payment.paymentType === 'card_payment' ? 'Fecha de pago' : 'Frecuencia'}
                           </p>
-                          <p className="font-semibold text-sm">
+                          <p className="font-semibold text-sm sm:text-base">
                             {getFrequencyLabel(payment)}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground">Método de pago</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground">Método de pago</p>
                           <div className="flex items-center gap-1">
                             {isPaidByCard ? (
                               <>
                                 <CreditCard className="h-4 w-4 text-blue-600" />
-                                <span className="text-sm font-semibold text-blue-600">Tarjeta</span>
+                                <span className="text-sm sm:text-base font-semibold text-blue-600">Tarjeta</span>
                               </>
                             ) : (
                               <>
                                 <Banknote className="h-4 w-4 text-green-600" />
-                                <span className="text-sm font-semibold text-green-600">Transferencia</span>
+                                <span className="text-sm sm:text-base font-semibold text-green-600">Transferencia</span>
                               </>
                             )}
                           </div>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground">Estado</p>
+                          <p className="text-xs sm:text-sm text-muted-foreground">Estado</p>
                           <Badge variant={payment.isActive ? 'default' : 'secondary'}>
                             {payment.isActive ? 'Activo' : 'Inactivo'}
                           </Badge>
@@ -733,20 +733,32 @@ export function Payments() {
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-2 ml-4">
+                    <div className="flex sm:flex-col gap-2 w-full sm:w-auto sm:ml-4">
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => toggleActive(payment)}
-                        className="text-xs"
+                        className="flex-1 sm:flex-none min-h-[44px]"
                       >
                         {payment.isActive ? 'Desactivar' : 'Activar'}
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(payment)}>
-                        <Edit className="h-4 w-4" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(payment)}
+                        className="flex-1 sm:flex-none min-h-[44px]"
+                      >
+                        <Edit className="h-4 w-4 sm:mr-0 mr-2" />
+                        <span className="sm:hidden">Editar</span>
                       </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(payment.id)}>
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(payment.id)}
+                        className="flex-1 sm:flex-none min-h-[44px]"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive sm:mr-0 mr-2" />
+                        <span className="sm:hidden">Eliminar</span>
                       </Button>
                     </div>
                   </div>

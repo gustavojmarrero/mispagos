@@ -122,8 +122,8 @@ export function Dashboard() {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-3xl font-bold tracking-tight">Dashboard</h2>
-        <p className="text-muted-foreground">
+        <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h2>
+        <p className="text-sm sm:text-base text-muted-foreground">
           Resumen inteligente de tus finanzas
         </p>
       </div>

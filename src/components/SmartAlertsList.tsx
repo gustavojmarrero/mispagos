@@ -78,13 +78,13 @@ export function SmartAlertsList({ alerts }: SmartAlertsListProps) {
               return (
                 <div
                   key={alert.id}
-                  className="flex items-center justify-between p-3 bg-background rounded-lg border"
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-background rounded-lg border gap-3"
                 >
-                  <div className="flex items-start gap-3 flex-1">
-                    <TypeIcon className="h-5 w-5 text-destructive mt-0.5" />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm">{alert.title}</h4>
-                      <p className="text-xs text-muted-foreground mt-1">
+                  <div className="flex items-start gap-3 flex-1 w-full sm:w-auto">
+                    <TypeIcon className="h-5 w-5 text-destructive mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-sm sm:text-base break-words">{alert.title}</h4>
+                      <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
                         {alert.description}
                       </p>
                     </div>
@@ -93,7 +93,7 @@ export function SmartAlertsList({ alerts }: SmartAlertsListProps) {
                     variant="outline"
                     size="sm"
                     onClick={() => handleAction(alert)}
-                    className="text-xs ml-3"
+                    className="w-full sm:w-auto text-xs sm:text-sm sm:ml-3 min-h-[44px] whitespace-nowrap"
                   >
                     {alert.action.label}
                     <ArrowRight className="h-3 w-3 ml-1" />
@@ -124,13 +124,13 @@ export function SmartAlertsList({ alerts }: SmartAlertsListProps) {
               return (
                 <div
                   key={alert.id}
-                  className="flex items-center justify-between p-3 bg-background rounded-lg border"
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-background rounded-lg border gap-3"
                 >
-                  <div className="flex items-start gap-3 flex-1">
-                    <TypeIcon className="h-5 w-5 text-yellow-600 mt-0.5" />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm">{alert.title}</h4>
-                      <p className="text-xs text-muted-foreground mt-1">
+                  <div className="flex items-start gap-3 flex-1 w-full sm:w-auto">
+                    <TypeIcon className="h-5 w-5 text-yellow-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-sm sm:text-base break-words">{alert.title}</h4>
+                      <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
                         {alert.description}
                       </p>
                     </div>
@@ -139,7 +139,7 @@ export function SmartAlertsList({ alerts }: SmartAlertsListProps) {
                     variant="outline"
                     size="sm"
                     onClick={() => handleAction(alert)}
-                    className="text-xs ml-3"
+                    className="w-full sm:w-auto text-xs sm:text-sm sm:ml-3 min-h-[44px] whitespace-nowrap"
                   >
                     {alert.action.label}
                     <ArrowRight className="h-3 w-3 ml-1" />
@@ -169,13 +169,13 @@ export function SmartAlertsList({ alerts }: SmartAlertsListProps) {
               return (
                 <div
                   key={alert.id}
-                  className="flex items-center justify-between p-3 bg-background rounded-lg border"
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 bg-background rounded-lg border gap-3"
                 >
-                  <div className="flex items-start gap-3 flex-1">
-                    <TypeIcon className="h-5 w-5 text-blue-600 mt-0.5" />
-                    <div className="flex-1">
-                      <h4 className="font-semibold text-sm">{alert.title}</h4>
-                      <p className="text-xs text-muted-foreground mt-1">
+                  <div className="flex items-start gap-3 flex-1 w-full sm:w-auto">
+                    <TypeIcon className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-semibold text-sm sm:text-base break-words">{alert.title}</h4>
+                      <p className="text-xs sm:text-sm text-muted-foreground mt-1 break-words">
                         {alert.description}
                       </p>
                     </div>
@@ -184,7 +184,7 @@ export function SmartAlertsList({ alerts }: SmartAlertsListProps) {
                     variant="outline"
                     size="sm"
                     onClick={() => handleAction(alert)}
-                    className="text-xs ml-3"
+                    className="w-full sm:w-auto text-xs sm:text-sm sm:ml-3 min-h-[44px] whitespace-nowrap"
                   >
                     {alert.action.label}
                     <ArrowRight className="h-3 w-3 ml-1" />

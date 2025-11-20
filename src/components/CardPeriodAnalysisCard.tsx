@@ -63,8 +63,8 @@ export function CardPeriodAnalysisCard({ analyses }: CardPeriodAnalysisCardProps
               key={card.id}
               className={`p-4 rounded-lg border-2 ${statusConfig.className}`}
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
+              <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+                <div className="flex-1 w-full sm:w-auto">
                   {/* Header */}
                   <div className="flex items-center gap-3 mb-3">
                     <CreditCard className="h-5 w-5" />
@@ -82,7 +82,7 @@ export function CardPeriodAnalysisCard({ analyses }: CardPeriodAnalysisCardProps
                   </div>
 
                   {/* Período Info */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs sm:text-sm">
                     <div>
                       <p className="text-muted-foreground">Fecha de corte</p>
                       <p className="font-medium">
@@ -130,12 +130,12 @@ export function CardPeriodAnalysisCard({ analyses }: CardPeriodAnalysisCardProps
 
                 {/* Action Button */}
                 {currentPeriod.status !== 'covered' && (
-                  <div className="ml-4">
+                  <div className="w-full sm:w-auto sm:ml-4">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={() => handleProgramPayment(card.id)}
-                      className="text-xs whitespace-nowrap"
+                      className="w-full sm:w-auto text-xs sm:text-sm whitespace-nowrap min-h-[44px]"
                     >
                       Programar pago
                       <ArrowRight className="h-3 w-3 ml-1" />

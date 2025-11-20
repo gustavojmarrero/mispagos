@@ -100,14 +100,14 @@ export function InputWithCopy({
         onClick={handleCopy}
         disabled={!value}
         className={cn(
-          'absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-md transition-all',
+          'absolute right-2 top-1/2 -translate-y-1/2 p-2 sm:p-1.5 rounded-md transition-all min-h-[40px] sm:min-h-0',
           'hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed',
           'focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1',
           copied && 'text-green-600'
         )}
         title={value ? 'Copiar' : 'Sin valor para copiar'}
       >
-        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+        {copied ? <Check className="h-4 w-4 sm:h-3.5 sm:w-3.5" /> : <Copy className="h-4 w-4 sm:h-3.5 sm:w-3.5" />}
       </button>
     </div>
   );

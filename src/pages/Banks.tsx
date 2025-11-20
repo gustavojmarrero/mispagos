@@ -133,12 +133,12 @@ export function Banks() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Bancos</h2>
-          <p className="text-muted-foreground">Gestiona los bancos emisores de tus tarjetas</p>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Bancos</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">Gestiona los bancos emisores de tus tarjetas</p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)}>
+        <Button onClick={() => setShowForm(!showForm)} className="w-full sm:w-auto">
           {showForm ? <X className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
           {showForm ? 'Cancelar' : 'Nuevo Banco'}
         </Button>
@@ -148,14 +148,14 @@ export function Banks() {
       {showForm && (
         <Card>
           <CardHeader>
-            <CardTitle>{editingBank ? 'Editar' : 'Nuevo'} Banco</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-xl sm:text-2xl">{editingBank ? 'Editar' : 'Nuevo'} Banco</CardTitle>
+            <CardDescription className="text-sm">
               {editingBank ? 'Actualiza los datos' : 'Agrega un nuevo banco emisor'}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Nombre del banco *</Label>
                   <Input
@@ -178,11 +178,11 @@ export function Banks() {
                 </div>
               </div>
 
-              <div className="flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={resetForm}>
+              <div className="flex flex-col sm:flex-row justify-end gap-2">
+                <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto">
                   Cancelar
                 </Button>
-                <Button type="submit">
+                <Button type="submit" className="w-full sm:w-auto">
                   {editingBank ? 'Actualizar' : 'Guardar'}
                 </Button>
               </div>
@@ -192,7 +192,7 @@ export function Banks() {
       )}
 
       {/* Banks List */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {banks.length === 0 ? (
           <Card className="col-span-full">
             <CardContent className="flex flex-col items-center justify-center py-12">
@@ -205,22 +205,24 @@ export function Banks() {
           banks.map((bank) => (
             <Card key={bank.id}>
               <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-lg flex items-center">
-                      <Building2 className="h-5 w-5 mr-2 text-primary" />
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex-1 w-full sm:w-auto min-w-0">
+                    <CardTitle className="text-base sm:text-lg flex items-center break-words">
+                      <Building2 className="h-5 w-5 mr-2 text-primary flex-shrink-0" />
                       {bank.name}
                     </CardTitle>
                     {bank.code && (
-                      <CardDescription>Código: {bank.code}</CardDescription>
+                      <CardDescription className="text-sm">Código: {bank.code}</CardDescription>
                     )}
                   </div>
-                  <div className="flex space-x-1">
-                    <Button variant="ghost" size="icon" onClick={() => handleEdit(bank)}>
-                      <Edit className="h-4 w-4" />
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <Button variant="ghost" size="sm" onClick={() => handleEdit(bank)} className="flex-1 sm:flex-none min-h-[44px]">
+                      <Edit className="h-4 w-4 sm:mr-0 mr-1" />
+                      <span className="sm:hidden">Editar</span>
                     </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(bank.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
+                    <Button variant="ghost" size="sm" onClick={() => handleDelete(bank.id)} className="flex-1 sm:flex-none min-h-[44px]">
+                      <Trash2 className="h-4 w-4 text-destructive sm:mr-0 mr-1" />
+                      <span className="sm:hidden">Eliminar</span>
                     </Button>
                   </div>
                 </div>

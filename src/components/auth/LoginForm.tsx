@@ -45,11 +45,11 @@ export function LoginForm() {
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
             <div className="bg-primary rounded-full p-3">
-              <LogIn className="h-8 w-8 text-primary-foreground" />
+              <LogIn className="h-6 w-6 sm:h-8 sm:w-8 text-primary-foreground" />
             </div>
           </div>
-          <CardTitle className="text-2xl text-center">MisPagos</CardTitle>
-          <CardDescription className="text-center">
+          <CardTitle className="text-xl sm:text-2xl text-center">MisPagos</CardTitle>
+          <CardDescription className="text-sm sm:text-base text-center">
             Ingresa tus credenciales para acceder
           </CardDescription>
         </CardHeader>
@@ -87,7 +87,7 @@ export function LoginForm() {
               />
             </div>
 
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full min-h-[44px]" disabled={loading}>
               {loading ? 'Iniciando sesión...' : 'Iniciar Sesión'}
             </Button>
           </form>

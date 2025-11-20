@@ -444,12 +444,12 @@ export function PaymentCalendar() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">Calendario de Pagos</h2>
-          <p className="text-muted-foreground">Vista de tus próximos pagos programados</p>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Calendario de Pagos</h2>
+          <p className="text-sm sm:text-base text-muted-foreground">Vista de tus próximos pagos programados</p>
         </div>
-        <Calendar className="h-8 w-8 text-primary" />
+        <Calendar className="h-8 w-8 text-primary flex-shrink-0" />
       </div>
 
       {/* Filtros */}
@@ -476,10 +476,10 @@ export function PaymentCalendar() {
             </div>
 
             {/* Filtros principales */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Filtro de período */}
               <div className="space-y-2">
-                <Label htmlFor="time-filter" className="text-sm font-medium flex items-center gap-2">
+                <Label htmlFor="time-filter" className="text-xs sm:text-sm font-medium flex items-center gap-2">
                   <CalendarRange className="h-4 w-4" />
                   Período
                 </Label>
@@ -510,7 +510,7 @@ export function PaymentCalendar() {
 
               {/* Filtro de estado */}
               <div className="space-y-2">
-                <Label className="text-sm font-medium flex items-center gap-2">
+                <Label className="text-xs sm:text-sm font-medium flex items-center gap-2">
                   <Filter className="h-4 w-4" />
                   Estado
                 </Label>
@@ -604,11 +604,11 @@ export function PaymentCalendar() {
               />
             </div>
 
-            <div className="flex justify-end space-x-2">
-              <Button variant="outline" onClick={() => setShowAdjustModal(false)}>
+            <div className="flex flex-col sm:flex-row justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowAdjustModal(false)} className="w-full sm:w-auto">
                 Cancelar
               </Button>
-              <Button onClick={handleSaveAdjustment}>
+              <Button onClick={handleSaveAdjustment} className="w-full sm:w-auto">
                 Guardar
               </Button>
             </div>
@@ -629,18 +629,18 @@ export function PaymentCalendar() {
         monthGroups.map((group) => (
           <Card key={`${group.month}-${group.year}`}>
             <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
-                  <CardTitle className="text-2xl capitalize">
+                  <CardTitle className="text-xl sm:text-2xl capitalize">
                     {group.month} {group.year}
                   </CardTitle>
-                  <CardDescription>
+                  <CardDescription className="text-sm">
                     {group.instances.length} pago{group.instances.length !== 1 ? 's' : ''} programado{group.instances.length !== 1 ? 's' : ''}
                   </CardDescription>
                 </div>
-                <div className="text-right">
-                  <p className="text-2xl font-bold">{formatCurrency(group.totalAmount)}</p>
-                  <div className="flex gap-4 mt-2 text-sm">
+                <div className="text-left sm:text-right w-full sm:w-auto">
+                  <p className="text-xl sm:text-2xl font-bold">{formatCurrency(group.totalAmount)}</p>
+                  <div className="flex gap-3 sm:gap-4 mt-2 text-xs sm:text-sm">
                     <div className="flex items-center gap-1">
                       <Banknote className="h-4 w-4 text-green-600" />
                       <span className="text-muted-foreground">{formatCurrency(group.totalTransfer)}</span>
@@ -669,74 +669,74 @@ export function PaymentCalendar() {
                         instance.status === 'paid' ? 'bg-muted/50 opacity-70' : ''
                       } ${instance.status === 'cancelled' ? 'bg-muted/30 opacity-50' : ''}`}
                     >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
+                      <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
+                        <div className="flex-1 w-full sm:w-auto">
                           <div className="flex items-center gap-3">
-                            <Icon className="h-5 w-5 text-primary" />
-                            <div>
-                              <h3 className="font-semibold">{instance.description}</h3>
-                              <p className="text-sm text-muted-foreground">
+                            <Icon className="h-5 w-5 text-primary flex-shrink-0" />
+                            <div className="min-w-0">
+                              <h3 className="font-semibold text-base sm:text-lg break-words">{instance.description}</h3>
+                              <p className="text-xs sm:text-sm text-muted-foreground break-words">
                                 {instance.paymentType === 'card_payment'
                                   ? `Tarjeta: ${getCardName(instance.cardId || '')}`
                                   : `Servicio: ${getServiceName(instance.serviceId || '')}`}
                               </p>
                               {instance.notes && (
-                                <p className="text-xs text-muted-foreground italic mt-1">
+                                <p className="text-xs text-muted-foreground italic mt-1 break-words">
                                   📝 {instance.notes}
                                 </p>
                               )}
                             </div>
                           </div>
 
-                          <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             <div>
-                              <p className="text-xs text-muted-foreground">Fecha</p>
-                              <p className="font-semibold text-sm">
+                              <p className="text-xs sm:text-sm text-muted-foreground">Fecha</p>
+                              <p className="font-semibold text-sm sm:text-base">
                                 {instance.dueDate.toLocaleDateString('es-ES')}
                               </p>
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Monto</p>
-                              <p className="font-semibold text-sm">{formatCurrency(instance.amount)}</p>
+                              <p className="text-xs sm:text-sm text-muted-foreground">Monto</p>
+                              <p className="font-semibold text-sm sm:text-base">{formatCurrency(instance.amount)}</p>
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Método de pago</p>
+                              <p className="text-xs sm:text-sm text-muted-foreground">Método de pago</p>
                               <div className="flex items-center gap-1">
                                 {isPaidByCard || instance.paymentType === 'card_payment' ? (
                                   instance.paymentType === 'card_payment' ? (
                                     <>
                                       <Banknote className="h-4 w-4 text-green-600" />
-                                      <span className="text-sm font-semibold text-green-600">Transferencia</span>
+                                      <span className="text-xs sm:text-sm font-semibold text-green-600">Transferencia</span>
                                     </>
                                   ) : (
                                     <>
                                       <CreditCard className="h-4 w-4 text-blue-600" />
-                                      <span className="text-sm font-semibold text-blue-600">Tarjeta</span>
+                                      <span className="text-xs sm:text-sm font-semibold text-blue-600">Tarjeta</span>
                                     </>
                                   )
                                 ) : (
                                   <>
                                     <Banknote className="h-4 w-4 text-green-600" />
-                                    <span className="text-sm font-semibold text-green-600">Transferencia</span>
+                                    <span className="text-xs sm:text-sm font-semibold text-green-600">Transferencia</span>
                                   </>
                                 )}
                               </div>
                             </div>
                             <div>
-                              <p className="text-xs text-muted-foreground">Estado</p>
+                              <p className="text-xs sm:text-sm text-muted-foreground">Estado</p>
                               {getStatusBadge(instance.status)}
                             </div>
                           </div>
                         </div>
 
                         {(instance.status === 'pending' || instance.status === 'paid') && (
-                          <div className="flex flex-col gap-2 ml-4">
+                          <div className="flex sm:flex-col gap-2 w-full sm:w-auto sm:ml-4">
                             {instance.status === 'pending' ? (
                               <Button
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleMarkAsPaid(instance)}
-                                className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                className="flex-1 sm:flex-none min-h-[44px] text-green-600 hover:text-green-700 hover:bg-green-50"
                               >
                                 <Check className="h-4 w-4 mr-1" />
                                 Pagado
@@ -746,7 +746,7 @@ export function PaymentCalendar() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleUnmarkAsPaid(instance)}
-                                className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                className="flex-1 sm:flex-none min-h-[44px] text-orange-600 hover:text-orange-700 hover:bg-orange-50"
                               >
                                 <RotateCcw className="h-4 w-4 mr-1" />
                                 Desmarcar
@@ -756,6 +756,7 @@ export function PaymentCalendar() {
                               variant="ghost"
                               size="sm"
                               onClick={() => handleOpenAdjust(instance)}
+                              className="flex-1 sm:flex-none min-h-[44px]"
                             >
                               <Edit className="h-4 w-4 mr-1" />
                               Ajustar
@@ -765,7 +766,7 @@ export function PaymentCalendar() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => handleCancelPayment(instance)}
-                                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                className="flex-1 sm:flex-none min-h-[44px] text-destructive hover:text-destructive hover:bg-destructive/10"
                               >
                                 <X className="h-4 w-4 mr-1" />
                                 Cancelar
