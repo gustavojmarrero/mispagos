@@ -4,10 +4,13 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
   updateDoc,
   doc,
   serverTimestamp,
   Timestamp,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,6 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
 import {
   Select,
   SelectContent,
@@ -33,6 +37,7 @@ import type {
   PaymentInstance,
   Card as CardType,
   PaymentStatus,
+  PartialPayment,
 } from '@/lib/types';
 import {
   Calendar,
@@ -46,6 +51,8 @@ import {
   CalendarClock,
   CalendarRange,
   RotateCcw,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -70,6 +77,9 @@ export function PaymentCalendar() {
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjustAmount, setAdjustAmount] = useState('');
   const [adjustNotes, setAdjustNotes] = useState('');
+  const [showPartialPaymentModal, setShowPartialPaymentModal] = useState(false);
+  const [partialAmount, setPartialAmount] = useState('');
+  const [partialNotes, setPartialNotes] = useState('');
 
   // Filtros
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('this_week');
@@ -262,9 +272,9 @@ export function PaymentCalendar() {
       );
     }
 
-    // Filtro de estado
+    // Filtro de estado - incluir 'partial' en pendientes
     if (showPendingOnly) {
-      filtered = filtered.filter((instance) => instance.status === 'pending');
+      filtered = filtered.filter((instance) => instance.status === 'pending' || instance.status === 'partial');
     }
 
     return filtered;
@@ -292,17 +302,23 @@ export function PaymentCalendar() {
 
       const group = groups.get(key)!;
       group.instances.push(instance);
-      group.totalAmount += instance.amount;
+
+      // Para pagos parciales, usar remainingAmount; para otros, usar amount
+      const amountToPay = instance.status === 'partial' && instance.remainingAmount !== undefined
+        ? instance.remainingAmount
+        : instance.amount;
+
+      group.totalAmount += amountToPay;
 
       // Calcular si es transferencia o tarjeta
       if (instance.paymentType === 'card_payment') {
-        group.totalTransfer += instance.amount;
+        group.totalTransfer += amountToPay;
       } else if (instance.serviceId) {
         const service = services.find((s) => s.id === instance.serviceId);
         if (service?.paymentMethod === 'card') {
-          group.totalCard += instance.amount;
+          group.totalCard += amountToPay;
         } else {
-          group.totalTransfer += instance.amount;
+          group.totalTransfer += amountToPay;
         }
       }
     });
@@ -318,6 +334,7 @@ export function PaymentCalendar() {
         status: 'paid',
         paidDate: serverTimestamp(),
         paidAmount: instance.amount,
+        remainingAmount: 0,
         updatedAt: serverTimestamp(),
         updatedBy: currentUser.id,
         updatedByName: currentUser.name,
@@ -356,16 +373,38 @@ export function PaymentCalendar() {
     if (!confirm('¿Estás seguro de desmarcar este pago como realizado?')) return;
 
     try {
-      await updateDoc(doc(db, 'payment_instances', instance.id), {
-        status: 'pending',
-        paidDate: null,
-        paidAmount: null,
-        updatedAt: serverTimestamp(),
-        updatedBy: currentUser.id,
-        updatedByName: currentUser.name,
-      });
+      // Verificar si hay pagos parciales
+      const hasPartialPayments = instance.partialPayments && instance.partialPayments.length > 0;
 
-      toast.success('Pago marcado como pendiente');
+      if (hasPartialPayments) {
+        // Si hay pagos parciales, calcular el monto pagado
+        const totalPaid = instance.partialPayments!.reduce((sum, p) => sum + p.amount, 0);
+        const remaining = instance.amount - totalPaid;
+
+        await updateDoc(doc(db, 'payment_instances', instance.id), {
+          status: 'partial',
+          paidDate: null,
+          paidAmount: totalPaid,
+          remainingAmount: remaining,
+          updatedAt: serverTimestamp(),
+          updatedBy: currentUser.id,
+          updatedByName: currentUser.name,
+        });
+        toast.success('Pago marcado como parcial');
+      } else {
+        // Si no hay pagos parciales, marcar como pendiente
+        await updateDoc(doc(db, 'payment_instances', instance.id), {
+          status: 'pending',
+          paidDate: null,
+          paidAmount: null,
+          remainingAmount: instance.amount,
+          updatedAt: serverTimestamp(),
+          updatedBy: currentUser.id,
+          updatedByName: currentUser.name,
+        });
+        toast.success('Pago marcado como pendiente');
+      }
+
       await fetchInstances();
     } catch (error) {
       console.error('Error unmarking as paid:', error);
@@ -409,6 +448,153 @@ export function PaymentCalendar() {
     }
   };
 
+  // Funciones de Pago Parcial
+  const handleOpenPartialPayment = (instance: PaymentInstance) => {
+    setEditingInstance(instance);
+    setPartialAmount('');
+    setPartialNotes('');
+    setShowPartialPaymentModal(true);
+  };
+
+  const handleSavePartialPayment = async () => {
+    if (!currentUser) return;
+    if (!editingInstance) return;
+
+    const amountToPay = parseCurrencyInput(partialAmount);
+    if (amountToPay <= 0) {
+      toast.error('El monto debe ser mayor a 0');
+      return;
+    }
+
+    const currentRemaining = editingInstance.remainingAmount ?? editingInstance.amount;
+    const currentPaid = editingInstance.paidAmount ?? 0;
+
+    if (amountToPay > currentRemaining) {
+      toast.error(`El monto excede lo pendiente (${formatCurrency(currentRemaining)})`);
+      return;
+    }
+
+    try {
+      // Crear registro de pago parcial con fecha actual (milliseconds)
+      const newPartialPayment: PartialPayment = {
+        id: crypto.randomUUID(),
+        amount: amountToPay,
+        paidDate: Date.now(),
+        notes: partialNotes || undefined,
+        paidBy: currentUser.id,
+        paidByName: currentUser.name,
+      };
+
+      // Calcular nuevos valores
+      const newPaidAmount = currentPaid + amountToPay;
+      const newRemainingAmount = editingInstance.amount - newPaidAmount;
+      const isFullyPaid = newRemainingAmount === 0;
+
+      // Actualizar en Firestore
+      await updateDoc(doc(db, 'payment_instances', editingInstance.id), {
+        status: isFullyPaid ? 'paid' : 'partial',
+        paidAmount: newPaidAmount,
+        remainingAmount: newRemainingAmount,
+        partialPayments: arrayUnion(newPartialPayment),
+        paidDate: isFullyPaid ? serverTimestamp() : editingInstance.paidDate || null,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
+      });
+
+      toast.success(
+        isFullyPaid
+          ? 'Pago completado'
+          : `Pago parcial registrado: ${formatCurrency(amountToPay)}`
+      );
+
+      setShowPartialPaymentModal(false);
+      setEditingInstance(null);
+      setPartialAmount('');
+      setPartialNotes('');
+      await fetchInstances();
+    } catch (error) {
+      console.error('Error saving partial payment:', error);
+      toast.error('Error al registrar el pago parcial');
+    }
+  };
+
+  const handleDeletePartialPayment = async (instance: PaymentInstance, paymentId: string) => {
+    if (!currentUser) return;
+    if (!confirm('¿Eliminar este pago parcial?')) return;
+
+    const partialPayments = instance.partialPayments || [];
+    const payment = partialPayments.find(p => p.id === paymentId);
+    if (!payment) return;
+
+    try {
+      // Filtrar el array de pagos parciales y asegurar formato correcto
+      const updatedPartialPayments = partialPayments
+        .filter(p => p.id !== paymentId)
+        .map(p => {
+          const cleanPayment: any = {
+            id: p.id,
+            amount: p.amount,
+            paidDate: typeof p.paidDate === 'number' ? p.paidDate : Date.now(),
+            paidBy: p.paidBy,
+            paidByName: p.paidByName,
+          };
+          // Solo agregar notes si no es undefined
+          if (p.notes !== undefined) {
+            cleanPayment.notes = p.notes;
+          }
+          return cleanPayment;
+        });
+
+      const newPaidAmount = (instance.paidAmount || 0) - payment.amount;
+      const newRemainingAmount = instance.amount - newPaidAmount;
+
+      // Actualizar el documento con el array filtrado
+      const docRef = doc(db, 'payment_instances', instance.id);
+      await updateDoc(docRef, {
+        status: newPaidAmount === 0 ? 'pending' : 'partial',
+        paidAmount: newPaidAmount === 0 ? null : newPaidAmount,
+        remainingAmount: newRemainingAmount,
+        partialPayments: updatedPartialPayments,
+        paidDate: newPaidAmount === 0 ? null : instance.paidDate,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
+      });
+
+      toast.success('Pago parcial eliminado');
+      await fetchInstances();
+    } catch (error: any) {
+      console.error('Error deleting partial payment:', error);
+
+      // Si es un error de invalid-argument (formato antiguo con Timestamp),
+      // limpiamos todo el array de partialPayments
+      if (error?.code === 'invalid-argument') {
+        try {
+          const docRef = doc(db, 'payment_instances', instance.id);
+          await updateDoc(docRef, {
+            status: 'pending',
+            paidAmount: null,
+            remainingAmount: instance.amount,
+            partialPayments: [], // Limpiar array completo
+            paidDate: null,
+            updatedAt: serverTimestamp(),
+            updatedBy: currentUser.id,
+            updatedByName: currentUser.name,
+          });
+
+          toast.success('Pagos parciales limpiados (formato antiguo incompatible)');
+          await fetchInstances();
+          return;
+        } catch (cleanupError) {
+          console.error('Error cleaning up partial payments:', cleanupError);
+        }
+      }
+
+      toast.error('Error al eliminar el pago parcial');
+    }
+  };
+
   const getCardName = (cardId: string) => {
     const card = cards.find((c) => c.id === cardId);
     return card?.name || 'Tarjeta no encontrada';
@@ -427,13 +613,14 @@ export function PaymentCalendar() {
   const getStatusBadge = (status: PaymentStatus) => {
     const variants: Record<PaymentStatus, { variant: 'default' | 'secondary' | 'destructive', label: string }> = {
       pending: { variant: 'default', label: 'Pendiente' },
+      partial: { variant: 'default', label: 'Parcial' },
       paid: { variant: 'secondary', label: 'Pagado' },
       overdue: { variant: 'destructive', label: 'Vencido' },
       cancelled: { variant: 'secondary', label: 'Cancelado' },
     };
 
     const config = variants[status];
-    return <Badge variant={config.variant}>{config.label}</Badge>;
+    return <Badge variant={config.variant} className={status === 'partial' ? 'bg-blue-600 hover:bg-blue-700' : ''}>{config.label}</Badge>;
   };
 
   if (loading) {
@@ -620,6 +807,102 @@ export function PaymentCalendar() {
         </Card>
       )}
 
+      {/* Partial Payment Modal */}
+      {showPartialPaymentModal && editingInstance && (
+        <Card className="border-blue-600 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-blue-500/10 to-transparent">
+            <CardTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5 text-blue-600" />
+              Registrar Pago Parcial
+            </CardTitle>
+            <CardDescription>{editingInstance.description}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-4">
+            {/* Información del pago */}
+            <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Monto total:</span>
+                <span className="font-semibold">{formatCurrency(editingInstance.amount)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Pagado hasta ahora:</span>
+                <span className="font-semibold text-green-600">
+                  {formatCurrency(editingInstance.paidAmount || 0)}
+                </span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Restante:</span>
+                <span className="font-semibold text-blue-600">
+                  {formatCurrency(editingInstance.remainingAmount ?? editingInstance.amount)}
+                </span>
+              </div>
+
+              {/* Progress bar */}
+              {(editingInstance.paidAmount || 0) > 0 && (
+                <div className="mt-3">
+                  <Progress
+                    value={((editingInstance.paidAmount || 0) / editingInstance.amount) * 100}
+                    className="h-2"
+                  />
+                  <p className="text-xs text-muted-foreground text-center mt-1">
+                    {Math.round(((editingInstance.paidAmount || 0) / editingInstance.amount) * 100)}% completado
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Form */}
+            <div className="space-y-2">
+              <Label htmlFor="partialAmount">Monto a abonar *</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                  $
+                </span>
+                <Input
+                  id="partialAmount"
+                  type="text"
+                  value={partialAmount}
+                  onChange={(e) => setPartialAmount(e.target.value)}
+                  onFocus={(e) => setTimeout(() => e.target.select(), 0)}
+                  placeholder="0.00"
+                  className="pl-7"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Máximo: {formatCurrency(editingInstance.remainingAmount ?? editingInstance.amount)}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="partialNotes">Notas (opcional)</Label>
+              <Input
+                id="partialNotes"
+                value={partialNotes}
+                onChange={(e) => setPartialNotes(e.target.value)}
+                placeholder="Ej: Primer abono"
+              />
+            </div>
+
+            <div className="flex flex-col sm:flex-row justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowPartialPaymentModal(false);
+                  setEditingInstance(null);
+                }}
+                className="w-full sm:w-auto"
+              >
+                Cancelar
+              </Button>
+              <Button onClick={handleSavePartialPayment} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700">
+                <Plus className="h-4 w-4 mr-1" />
+                Registrar Abono
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Month Groups */}
       {monthGroups.length === 0 ? (
         <Card>
@@ -671,13 +954,15 @@ export function PaymentCalendar() {
                       key={instance.id}
                       className={`border rounded-lg p-4 transition-all ${
                         instance.status === 'paid' ? 'bg-muted/50 opacity-70' : ''
-                      } ${instance.status === 'cancelled' ? 'bg-muted/30 opacity-50' : ''}`}
+                      } ${instance.status === 'cancelled' ? 'bg-muted/30 opacity-50' : ''} ${
+                        instance.status === 'partial' ? 'border-blue-400 bg-blue-50/30' : ''
+                      }`}
                     >
                       <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
                         <div className="flex-1 w-full sm:w-auto">
                           <div className="flex items-center gap-3">
                             <Icon className="h-5 w-5 text-primary flex-shrink-0" />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                               <h3 className="font-semibold text-base sm:text-lg break-words">{instance.description}</h3>
                               <p className="text-xs sm:text-sm text-muted-foreground break-words">
                                 {instance.paymentType === 'card_payment'
@@ -691,6 +976,73 @@ export function PaymentCalendar() {
                               )}
                             </div>
                           </div>
+
+                          {/* Progress bar para pagos parciales */}
+                          {instance.status === 'partial' && (instance.paidAmount || 0) > 0 && (
+                            <div className="mt-3 bg-white rounded-lg p-3 border border-blue-200">
+                              <div className="flex justify-between text-xs mb-2">
+                                <span className="text-muted-foreground">Progreso del pago</span>
+                                <span className="font-semibold text-blue-600">
+                                  {Math.round(((instance.paidAmount || 0) / instance.amount) * 100)}%
+                                </span>
+                              </div>
+                              <Progress
+                                value={((instance.paidAmount || 0) / instance.amount) * 100}
+                                className="h-2 mb-2"
+                              />
+                              <div className="flex justify-between text-xs">
+                                <span className="text-green-600 font-medium">
+                                  Pagado: {formatCurrency(instance.paidAmount || 0)}
+                                </span>
+                                <span className="text-blue-600 font-medium">
+                                  Restante: {formatCurrency(instance.remainingAmount || 0)}
+                                </span>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Historial de pagos parciales */}
+                          {instance.partialPayments && instance.partialPayments.length > 0 && (
+                            <div className="mt-3 bg-muted/30 rounded-lg p-3 border">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs font-semibold">Historial de abonos</span>
+                                <Badge variant="secondary" className="text-xs">
+                                  {instance.partialPayments.length}
+                                </Badge>
+                              </div>
+                              <div className="space-y-2">
+                                {instance.partialPayments.map((payment) => (
+                                  <div
+                                    key={payment.id}
+                                    className="flex items-center justify-between text-xs bg-white rounded p-2 border"
+                                  >
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-semibold text-green-600">
+                                        {formatCurrency(payment.amount)}
+                                      </p>
+                                      <p className="text-muted-foreground text-xs">
+                                        {new Date(payment.paidDate).toLocaleDateString('es-ES')}{' '}
+                                        • {payment.paidByName}
+                                      </p>
+                                      {payment.notes && (
+                                        <p className="text-muted-foreground italic text-xs mt-1">
+                                          {payment.notes}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeletePartialPayment(instance, payment.id)}
+                                      className="h-6 w-6 p-0 ml-2 flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                    >
+                                      <Trash2 className="h-3 w-3" />
+                                    </Button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             <div>
@@ -733,18 +1085,50 @@ export function PaymentCalendar() {
                           </div>
                         </div>
 
-                        {(instance.status === 'pending' || instance.status === 'paid') && (
+                        {(instance.status === 'pending' || instance.status === 'paid' || instance.status === 'partial') && (
                           <div className="flex sm:flex-col gap-2 w-full sm:w-auto sm:ml-4">
                             {instance.status === 'pending' ? (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleMarkAsPaid(instance)}
-                                className="flex-1 sm:flex-none min-h-[44px] text-green-600 hover:text-green-700 hover:bg-green-50"
-                              >
-                                <Check className="h-4 w-4 mr-1" />
-                                Pagado
-                              </Button>
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleMarkAsPaid(instance)}
+                                  className="flex-1 sm:flex-none min-h-[44px] text-green-600 hover:text-green-700 hover:bg-green-50"
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Pagado
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleOpenPartialPayment(instance)}
+                                  className="flex-1 sm:flex-none min-h-[44px] text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                >
+                                  <Plus className="h-4 w-4 mr-1" />
+                                  Parcial
+                                </Button>
+                              </>
+                            ) : instance.status === 'partial' ? (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleOpenPartialPayment(instance)}
+                                  className="flex-1 sm:flex-none min-h-[44px] text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                >
+                                  <Plus className="h-4 w-4 mr-1" />
+                                  Abonar más
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleMarkAsPaid(instance)}
+                                  className="flex-1 sm:flex-none min-h-[44px] text-green-600 hover:text-green-700 hover:bg-green-50"
+                                >
+                                  <Check className="h-4 w-4 mr-1" />
+                                  Completar
+                                </Button>
+                              </>
                             ) : (
                               <Button
                                 variant="ghost"
@@ -756,25 +1140,27 @@ export function PaymentCalendar() {
                                 Desmarcar
                               </Button>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleOpenAdjust(instance)}
-                              className="flex-1 sm:flex-none min-h-[44px]"
-                            >
-                              <Edit className="h-4 w-4 mr-1" />
-                              Ajustar
-                            </Button>
-                            {instance.status === 'pending' && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleCancelPayment(instance)}
-                                className="flex-1 sm:flex-none min-h-[44px] text-destructive hover:text-destructive hover:bg-destructive/10"
-                              >
-                                <X className="h-4 w-4 mr-1" />
-                                Cancelar
-                              </Button>
+                            {(instance.status === 'pending' || instance.status === 'partial') && (
+                              <>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleOpenAdjust(instance)}
+                                  className="flex-1 sm:flex-none min-h-[44px]"
+                                >
+                                  <Edit className="h-4 w-4 mr-1" />
+                                  Ajustar
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleCancelPayment(instance)}
+                                  className="flex-1 sm:flex-none min-h-[44px] text-destructive hover:text-destructive hover:bg-destructive/10"
+                                >
+                                  <X className="h-4 w-4 mr-1" />
+                                  Cancelar
+                                </Button>
+                              </>
                             )}
                           </div>
                         )}

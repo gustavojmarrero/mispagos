@@ -140,7 +140,17 @@ export interface ScheduledPaymentFormData {
 }
 
 // Payment Instance Types (instancias generadas automáticamente)
-export type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
+export type PaymentStatus = 'pending' | 'partial' | 'paid' | 'overdue' | 'cancelled';
+
+// Tipo para registrar pagos parciales
+export interface PartialPayment {
+  id: string;
+  amount: number;
+  paidDate: number; // Milliseconds desde epoch para compatibilidad con Firestore
+  notes?: string;
+  paidBy: string; // userId de quien pagó
+  paidByName: string; // Nombre visible de quien pagó
+}
 
 export interface PaymentInstance {
   id: string;
@@ -158,6 +168,8 @@ export interface PaymentInstance {
   // Información de pago
   paidDate?: Date;
   paidAmount?: number;
+  remainingAmount?: number; // Monto restante por pagar (para pagos parciales)
+  partialPayments?: PartialPayment[]; // Historial de pagos parciales
   notes?: string; // Para justificar ajustes o anotar razones
   createdAt: Date;
   updatedAt: Date;

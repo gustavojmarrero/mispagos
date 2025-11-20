@@ -19,7 +19,7 @@ import type {
  */
 export function getCurrentMonthRange(): { start: Date; end: Date } {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Desde hoy
+  const start = new Date(now.getFullYear(), now.getMonth(), 1); // Desde el día 1 del mes
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0); // Último día del mes
   return { start, end };
 }
@@ -115,8 +115,30 @@ export function generateInstancesForDateRange(
 
   // Para pagos a tarjetas (fecha específica única)
   if (scheduledPayment.paymentType === 'card_payment' && scheduledPayment.paymentDate) {
+    console.log('[PaymentInstances] 🔍 Procesando pago de tarjeta:', {
+      description: scheduledPayment.description,
+      paymentDate: scheduledPayment.paymentDate,
+      paymentDateType: typeof scheduledPayment.paymentDate,
+      paymentDateConstructor: scheduledPayment.paymentDate?.constructor?.name,
+      isDate: scheduledPayment.paymentDate instanceof Date,
+      startDate,
+      endDate,
+    });
+
     const dueDate = scheduledPayment.paymentDate;
+
+    console.log('[PaymentInstances] 📅 Comparación de fechas:', {
+      dueDate,
+      dueDateString: dueDate.toString?.(),
+      startDateString: startDate.toString(),
+      endDateString: endDate.toString(),
+      isAfterStart: dueDate >= startDate,
+      isBeforeEnd: dueDate <= endDate,
+      willGenerate: dueDate >= startDate && dueDate <= endDate,
+    });
+
     if (dueDate >= startDate && dueDate <= endDate) {
+      console.log('[PaymentInstances] ✅ Generando instancia para:', scheduledPayment.description);
       instances.push({
         userId: scheduledPayment.userId, // Mantener por compatibilidad
         householdId: scheduledPayment.householdId,
@@ -133,6 +155,8 @@ export function generateInstancesForDateRange(
         updatedBy: scheduledPayment.updatedBy,
         updatedByName: scheduledPayment.updatedByName,
       });
+    } else {
+      console.log('[PaymentInstances] ⚠️ Fecha fuera del rango, NO se genera instancia');
     }
     return instances;
   }
@@ -225,13 +249,33 @@ export async function generateCurrentAndNextMonthInstances(
   );
 
   // Guardar en Firestore
+  console.log(`[PaymentInstances] 💾 Intentando guardar ${instancesToCreate.length} instancias nuevas`);
+
   for (const instance of instancesToCreate) {
-    await addDoc(collection(db, 'payment_instances'), {
-      ...instance,
-      dueDate: Timestamp.fromDate(instance.dueDate),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    try {
+      const dataToSave = {
+        ...instance,
+        dueDate: Timestamp.fromDate(instance.dueDate),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      console.log('[PaymentInstances] 📝 Guardando instancia:', {
+        description: instance.description,
+        dueDate: instance.dueDate,
+        amount: instance.amount,
+        scheduledPaymentId: instance.scheduledPaymentId,
+        cardId: instance.cardId,
+        serviceId: instance.serviceId,
+      });
+
+      await addDoc(collection(db, 'payment_instances'), dataToSave);
+      console.log('[PaymentInstances] ✅ Instancia guardada exitosamente');
+    } catch (error) {
+      console.error('[PaymentInstances] ❌ Error guardando instancia:', error);
+      console.error('[PaymentInstances] Datos que causaron el error:', instance);
+      throw error;
+    }
   }
 }
 

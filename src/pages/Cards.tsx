@@ -248,7 +248,7 @@ export function Cards() {
           <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Tarjetas</h2>
           <p className="text-sm sm:text-base text-muted-foreground">Gestiona tus tarjetas de crédito</p>
         </div>
-        <Button onClick={() => setShowForm(!showForm)} className="w-full sm:w-auto">
+        <Button onClick={() => setShowForm(!showForm)} className="hidden sm:flex w-full sm:w-auto">
           {showForm ? <X className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
           {showForm ? 'Cancelar' : 'Nueva Tarjeta'}
         </Button>
@@ -630,6 +630,15 @@ export function Cards() {
           ))
         )}
       </div>
+
+      {/* Botón flotante fijo - Solo en móvil */}
+      <Button
+        onClick={() => setShowForm(!showForm)}
+        className="sm:hidden fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50"
+        size="icon"
+      >
+        {showForm ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
+      </Button>
     </div>
   );
 }
