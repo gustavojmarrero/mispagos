@@ -4,13 +4,11 @@ import {
   query,
   where,
   getDocs,
-  getDoc,
   updateDoc,
   doc,
   serverTimestamp,
   Timestamp,
   arrayUnion,
-  arrayRemove,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
