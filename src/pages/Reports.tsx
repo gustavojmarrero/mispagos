@@ -77,8 +77,6 @@ export function Reports() {
       const cardsData = cardsSnapshot.docs.map((doc) => ({
         ...doc.data(),
         id: doc.id,
-        closingDay: doc.data().closingDay || 1,
-        paymentDueDay: doc.data().paymentDueDay || 1,
         createdAt: doc.data().createdAt?.toDate() || new Date(),
         updatedAt: doc.data().updatedAt?.toDate() || new Date(),
       })) as CardType[];
@@ -107,8 +105,7 @@ export function Reports() {
       const scheduledData = scheduledSnapshot.docs.map((doc) => ({
         ...doc.data(),
         id: doc.id,
-        startDate: doc.data().startDate?.toDate() || new Date(),
-        endDate: doc.data().endDate?.toDate(),
+        paymentDate: doc.data().paymentDate?.toDate(),
         createdAt: doc.data().createdAt?.toDate() || new Date(),
         updatedAt: doc.data().updatedAt?.toDate() || new Date(),
       })) as ScheduledPayment[];
