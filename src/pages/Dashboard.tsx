@@ -65,7 +65,6 @@ export function Dashboard() {
         const scheduledData = scheduledSnapshot.docs.map((doc) => ({
           ...doc.data(),
           id: doc.id,
-          specificDate: doc.data().specificDate?.toDate(),
           paymentDate: doc.data().paymentDate?.toDate(),
           createdAt: doc.data().createdAt?.toDate() || new Date(),
           updatedAt: doc.data().updatedAt?.toDate() || new Date(),

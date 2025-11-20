@@ -16,7 +16,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select } from '@/components/ui/select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type { Service, ServiceFormData, PaymentMethod } from '@/lib/types';
 import { Store, Edit, Trash2, Plus, X, CreditCard, Banknote } from 'lucide-react';
 
@@ -170,13 +176,16 @@ export function Services() {
               <div className="space-y-2">
                 <Label htmlFor="paymentMethod">Método de pago *</Label>
                 <Select
-                  id="paymentMethod"
                   value={formData.paymentMethod}
-                  onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value as PaymentMethod })}
-                  required
+                  onValueChange={(value) => setFormData({ ...formData, paymentMethod: value as PaymentMethod })}
                 >
-                  <option value="transfer">Transferencia/Efectivo</option>
-                  <option value="card">Tarjeta de Crédito</option>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona método de pago" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="transfer">Transferencia/Efectivo</SelectItem>
+                    <SelectItem value="card">Tarjeta de Crédito</SelectItem>
+                  </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
                   Indica cómo pagas normalmente este servicio

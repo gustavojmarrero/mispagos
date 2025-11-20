@@ -21,7 +21,7 @@ export function CardPaymentAlerts({ alerts }: CardPaymentAlertsProps) {
     navigate(`/payments?cardId=${cardId}`);
   };
 
-  const handleViewCard = (cardId: string) => {
+  const handleViewCard = () => {
     // Navegar a la página de tarjetas
     navigate('/cards');
   };
@@ -75,7 +75,7 @@ export function CardPaymentAlerts({ alerts }: CardPaymentAlertsProps) {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => handleViewCard(card.id)}
+                  onClick={() => handleViewCard()}
                   className="text-xs"
                 >
                   Ver tarjeta

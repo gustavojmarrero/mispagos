@@ -290,7 +290,7 @@ export function analyzeCardPeriods(
 export function generateSmartAlerts(
   cards: Card[],
   instances: PaymentInstance[],
-  scheduled: ScheduledPayment[],
+  _scheduled: ScheduledPayment[],
   cardPeriods: CardPeriodAnalysis[],
   cashFlow: WeeklyCashFlow
 ): SmartAlert[] {

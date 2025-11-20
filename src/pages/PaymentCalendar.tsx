@@ -43,7 +43,6 @@ import {
   Edit,
   Banknote,
   Filter,
-  CalendarDays,
   CalendarClock,
   CalendarRange,
   RotateCcw,

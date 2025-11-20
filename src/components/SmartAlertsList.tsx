@@ -1,8 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import type { SmartAlert, AlertSeverity } from '@/lib/dashboardMetrics';
+import type { SmartAlert } from '@/lib/dashboardMetrics';
 import {
   AlertTriangle,
   AlertCircle,
@@ -33,32 +32,6 @@ export function SmartAlertsList({ alerts }: SmartAlertsListProps) {
       navigate(`${route}?${queryString}`);
     } else {
       navigate(route);
-    }
-  };
-
-  const getSeverityConfig = (severity: AlertSeverity) => {
-    switch (severity) {
-      case 'critical':
-        return {
-          icon: AlertTriangle,
-          className: 'border-destructive/50 bg-destructive/5',
-          iconClassName: 'text-destructive',
-          badgeVariant: 'destructive' as const,
-        };
-      case 'warning':
-        return {
-          icon: AlertCircle,
-          className: 'border-yellow-500/50 bg-yellow-50',
-          iconClassName: 'text-yellow-600',
-          badgeVariant: 'default' as const,
-        };
-      case 'info':
-        return {
-          icon: Info,
-          className: 'border-blue-500/50 bg-blue-50',
-          iconClassName: 'text-blue-600',
-          badgeVariant: 'secondary' as const,
-        };
     }
   };
 

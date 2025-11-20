@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { CardPeriodAnalysis } from '@/lib/dashboardMetrics';
 import { formatCurrency } from '@/lib/utils';
-import { CreditCard, Calendar, CheckCircle, AlertTriangle, XCircle, ArrowRight } from 'lucide-react';
+import { CreditCard, CheckCircle, AlertTriangle, XCircle, ArrowRight } from 'lucide-react';
 
 interface CardPeriodAnalysisCardProps {
   analyses: CardPeriodAnalysis[];

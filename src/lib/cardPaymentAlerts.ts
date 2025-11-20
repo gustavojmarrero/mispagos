@@ -97,8 +97,7 @@ function hasValidPayment(
   // Verificar si algún scheduled payment cumple las condiciones
   const hasValidScheduled = cardScheduledPayments.some((scheduled) => {
     // Para scheduled payments con fecha específica
-    // Puede usar specificDate o paymentDate según la implementación
-    const scheduledDate = scheduled.specificDate || scheduled.paymentDate;
+    const scheduledDate = scheduled.paymentDate;
 
     if (scheduledDate) {
       const paymentInRange =
