@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { LayoutDashboard, CreditCard, Receipt, Calendar, Building2, LogOut, Menu } from 'lucide-react';
+import { LayoutDashboard, CreditCard, Receipt, Calendar, Building2, LogOut, Menu, BarChart3 } from 'lucide-react';
 
 export function Layout() {
   const { currentUser, signOut } = useAuth();
@@ -20,6 +20,7 @@ export function Layout() {
     { to: '/cards', label: 'Tarjetas', icon: CreditCard },
     { to: '/payments', label: 'Pagos', icon: Receipt },
     { to: '/calendar', label: 'Calendario', icon: Calendar },
+    { to: '/reports', label: 'Reportes', icon: BarChart3 },
     { to: '/services', label: 'Servicios', icon: Building2 },
     { to: '/banks', label: 'Bancos', icon: Building2 },
   ];

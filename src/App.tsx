@@ -8,6 +8,7 @@ import { Dashboard } from '@/pages/Dashboard';
 import { Cards } from '@/pages/Cards';
 import { Payments } from '@/pages/Payments';
 import { PaymentCalendar } from '@/pages/PaymentCalendar';
+import { Reports } from '@/pages/Reports';
 import { Services } from '@/pages/Services';
 import { Banks } from '@/pages/Banks';
 
@@ -29,6 +30,7 @@ function App() {
             <Route path="cards" element={<Cards />} />
             <Route path="payments" element={<Payments />} />
             <Route path="calendar" element={<PaymentCalendar />} />
+            <Route path="reports" element={<Reports />} />
             <Route path="services" element={<Services />} />
             <Route path="banks" element={<Banks />} />
           </Route>
