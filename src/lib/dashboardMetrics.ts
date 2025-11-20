@@ -68,10 +68,74 @@ export interface DayTimeline {
  */
 export function calculateWeeklyCashFlow(
   instances: PaymentInstance[],
-  services: Service[]
+  services: Service[],
+  isHistorical: boolean = false
 ): WeeklyCashFlow {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  // Para períodos históricos, calcular totales de todas las instancias filtradas
+  if (isHistorical) {
+    const allPendingInstances = instances.filter(
+      (instance) => instance.status === 'pending' || instance.status === 'partial'
+    );
+
+    const allPaidAndPartialInstances = instances.filter(
+      (instance) => instance.status === 'paid' || instance.status === 'partial'
+    );
+
+    // Calcular totales
+    let totalPending = 0;
+    let byTransfer = 0;
+    let byCard = 0;
+
+    allPendingInstances.forEach((instance) => {
+      const amountToPay = instance.status === 'partial' && instance.remainingAmount !== undefined
+        ? instance.remainingAmount
+        : instance.amount;
+
+      totalPending += amountToPay;
+
+      if (instance.paymentType === 'card_payment') {
+        byTransfer += amountToPay;
+      } else if (instance.serviceId) {
+        const service = services.find((s) => s.id === instance.serviceId);
+        if (service?.paymentMethod === 'card') {
+          byCard += amountToPay;
+        } else {
+          byTransfer += amountToPay;
+        }
+      }
+    });
+
+    const totalPaid = allPaidAndPartialInstances.reduce((sum, instance) => {
+      if (instance.status === 'paid') {
+        return sum + instance.amount;
+      } else if (instance.status === 'partial' && instance.paidAmount !== undefined) {
+        return sum + instance.paidAmount;
+      }
+      return sum;
+    }, 0);
+
+    const grandTotal = totalPending + totalPaid;
+    const percentagePaid = grandTotal > 0 ? (totalPaid / grandTotal) * 100 : 0;
+
+    return {
+      thisWeek: {
+        totalPending,
+        byTransfer,
+        byCard,
+        instancesCount: allPendingInstances.length,
+        urgent: 0, // No relevante para períodos históricos
+      },
+      thisMonth: {
+        totalPending,
+        totalPaid,
+        remaining: totalPending,
+        percentagePaid,
+      },
+    };
+  }
 
   // Calcular próximo lunes
   const nextMonday = new Date(today);

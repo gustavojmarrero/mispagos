@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   collection,
   query,
@@ -11,6 +11,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBanks } from '@/hooks/useBanks';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,6 +44,7 @@ import {
   Building2,
   DollarSign,
   User,
+  Search,
 } from 'lucide-react';
 
 export function Cards() {
@@ -73,6 +75,10 @@ export function Cards() {
   const [availableCreditInput, setAvailableCreditInput] = useState('');
   const [isEditingCreditLimit, setIsEditingCreditLimit] = useState(false);
   const [isEditingAvailableCredit, setIsEditingAvailableCredit] = useState(false);
+
+  // Estados para búsqueda y ordenamiento
+  const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'name' | 'balance' | 'bank' | 'credit'>('name');
 
   useEffect(() => {
     fetchCards();
@@ -233,6 +239,41 @@ export function Cards() {
     return bank?.name || 'Sin banco';
   };
 
+  // Filtrado y ordenamiento de tarjetas
+  const filteredAndSortedCards = useMemo(() => {
+    let result = [...cards];
+
+    // Filtrar por búsqueda
+    if (searchTerm.trim()) {
+      const search = searchTerm.toLowerCase();
+      result = result.filter(
+        (card) =>
+          card.name.toLowerCase().includes(search) ||
+          card.lastDigits.includes(search) ||
+          getBankName(card.bankId).toLowerCase().includes(search) ||
+          card.owner.toLowerCase().includes(search)
+      );
+    }
+
+    // Ordenar
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'balance':
+          return b.currentBalance - a.currentBalance;
+        case 'bank':
+          return getBankName(a.bankId).localeCompare(getBankName(b.bankId));
+        case 'credit':
+          return b.availableCredit - a.availableCredit;
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [cards, searchTerm, sortBy, banks]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -255,8 +296,16 @@ export function Cards() {
       </div>
 
       {/* Form */}
-      {showForm && (
-        <Card className="shadow-md border-border">
+      <AnimatePresence mode="wait">
+        {showForm && (
+          <motion.div
+            key="card-form"
+            initial={{ opacity: 0, height: 0, overflow: 'hidden' }}
+            animate={{ opacity: 1, height: 'auto', overflow: 'visible' }}
+            exit={{ opacity: 0, height: 0, overflow: 'hidden' }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card className="shadow-md border-border">
           <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
             <CardTitle className="text-xl sm:text-2xl">{editingCard ? 'Editar' : 'Nueva'} Tarjeta</CardTitle>
             <CardDescription className="text-sm">
@@ -527,6 +576,46 @@ export function Cards() {
             </form>
           </CardContent>
         </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Barra de búsqueda y ordenamiento */}
+      {cards.length > 0 && (
+        <Card className="shadow-sm">
+          <CardContent className="pt-6">
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Buscar por nombre, banco, últimos dígitos..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <div className="w-full sm:w-48">
+                <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Ordenar por" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name">Nombre A-Z</SelectItem>
+                    <SelectItem value="balance">Saldo (Mayor a Menor)</SelectItem>
+                    <SelectItem value="credit">Crédito Disponible</SelectItem>
+                    <SelectItem value="bank">Banco</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            {searchTerm && (
+              <p className="text-sm text-muted-foreground mt-3">
+                {filteredAndSortedCards.length} {filteredAndSortedCards.length === 1 ? 'tarjeta encontrada' : 'tarjetas encontradas'}
+              </p>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {/* Cards List */}
@@ -539,94 +628,127 @@ export function Cards() {
               <p className="text-sm text-muted-foreground">Haz clic en "Nueva Tarjeta" para agregar una</p>
             </CardContent>
           </Card>
+        ) : filteredAndSortedCards.length === 0 ? (
+          <Card className="col-span-full">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <Search className="h-12 w-12 text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No se encontraron tarjetas</p>
+              <p className="text-sm text-muted-foreground">Intenta con otro término de búsqueda</p>
+            </CardContent>
+          </Card>
         ) : (
-          cards.map((card) => (
-            <Card
-              key={card.id}
-              className="relative hover:shadow-lg transition-all duration-300 sm:hover:scale-[1.02] border-border"
-            >
-              <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-white/90 backdrop-blur-sm p-1.5 sm:p-2 rounded-lg shadow-sm">
-                <img src={getCardIcon(card.cardType)} alt={card.cardType} className="h-6 sm:h-8 w-auto" />
-              </div>
+          filteredAndSortedCards.map((card) => (
+            <div key={card.id}>
+                <Card className="relative hover:shadow-lg transition-shadow duration-300 border-border h-full">
+                  <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-white/90 backdrop-blur-sm p-1.5 sm:p-2 rounded-lg shadow-sm">
+                    <img src={getCardIcon(card.cardType)} alt={card.cardType} className="h-6 sm:h-8 w-auto" />
+                  </div>
 
-              <CardHeader className="pb-3 pr-14 sm:pr-16">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <CardTitle className="text-base sm:text-lg font-bold break-words">{card.name}</CardTitle>
-                    <CardDescription className="flex items-center gap-2 mt-2 flex-wrap">
-                      <span className="font-mono font-medium">**** {card.lastDigits}</span>
-                      <Badge variant="outline" className="text-xs font-medium">
-                        {card.owner}
-                      </Badge>
-                    </CardDescription>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                      <p className="text-sm text-muted-foreground font-medium">
-                        {getBankName(card.bankId)}
-                      </p>
+                  <CardHeader className="pb-3 pr-14 sm:pr-16">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 min-w-0">
+                        <CardTitle className="text-base sm:text-lg font-bold break-words">{card.name}</CardTitle>
+                        <CardDescription className="flex items-center gap-2 mt-2 flex-wrap">
+                          <span className="font-mono font-medium">**** {card.lastDigits}</span>
+                          <Badge variant="outline" className="text-xs font-medium">
+                            {card.owner}
+                          </Badge>
+                        </CardDescription>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          <p className="text-sm text-muted-foreground font-medium">
+                            {getBankName(card.bankId)}
+                          </p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </CardHeader>
+                  </CardHeader>
 
-              <CardContent className="space-y-3">
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Saldo actual</span>
-                    <span className="font-semibold">{formatCurrency(card.currentBalance)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Crédito disponible</span>
-                    <span className="font-semibold text-green-600">{formatCurrency(card.availableCredit)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Límite</span>
-                    <span>{formatCurrency(card.creditLimit)}</span>
-                  </div>
-                </div>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Saldo actual</span>
+                        <span className="font-semibold">{formatCurrency(card.currentBalance)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Crédito disponible</span>
+                        <span className="font-semibold text-green-600">{formatCurrency(card.availableCredit)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Límite</span>
+                        <span>{formatCurrency(card.creditLimit)}</span>
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-                  <div className="text-sm">
-                    <span className="text-muted-foreground block">Día de corte</span>
-                    <span className="font-medium">{card.closingDay}</span>
-                  </div>
-                  <div className="text-sm">
-                    <span className="text-muted-foreground block">Día de pago</span>
-                    <span className="font-medium">{card.dueDay}</span>
-                  </div>
-                </div>
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+                      <div className="text-sm">
+                        <span className="text-muted-foreground block">Día de corte</span>
+                        <span className="font-medium">{card.closingDay}</span>
+                      </div>
+                      <div className="text-sm">
+                        <span className="text-muted-foreground block">Día de pago</span>
+                        <span className="font-medium">{card.dueDay}</span>
+                      </div>
+                    </div>
 
-                {/* Progress bar */}
-                <div className="pt-2">
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-primary h-2 rounded-full transition-all"
-                      style={{
-                        width: card.creditLimit > 0
-                          ? `${Math.min((card.currentBalance / card.creditLimit) * 100, 100)}%`
-                          : '0%',
-                      }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1 text-right">
-                    {card.creditLimit > 0
-                      ? `${((card.currentBalance / card.creditLimit) * 100).toFixed(1)}% utilizado`
-                      : '0% utilizado'}
-                  </p>
-                </div>
+                    {/* Progress bar con estados visuales */}
+                    <div className="pt-2">
+                      {(() => {
+                        const usagePercent = card.creditLimit > 0
+                          ? (card.currentBalance / card.creditLimit) * 100
+                          : 0;
 
-                <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
-                  <Button variant="ghost" size="sm" onClick={() => handleEdit(card)} className="w-full sm:w-auto min-h-[44px]">
-                    <Edit className="h-4 w-4 mr-1" />
-                    Editar
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(card.id)} className="w-full sm:w-auto min-h-[44px]">
-                    <Trash2 className="h-4 w-4 mr-1 text-destructive" />
-                    Eliminar
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                        const getUsageColor = (percent: number) => {
+                          if (percent < 50) return 'bg-green-500';
+                          if (percent < 80) return 'bg-yellow-500';
+                          return 'bg-red-500';
+                        };
+
+                        const getUsageStatus = (percent: number) => {
+                          if (percent < 50) return { text: 'Uso saludable', color: 'text-green-600 bg-green-50' };
+                          if (percent < 80) return { text: 'Precaución', color: 'text-yellow-600 bg-yellow-50' };
+                          return { text: 'Crítico', color: 'text-red-600 bg-red-50' };
+                        };
+
+                        const status = getUsageStatus(usagePercent);
+
+                        return (
+                          <>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-xs font-medium">Utilización</span>
+                              <Badge className={`text-xs ${status.color} border-0`}>
+                                {status.text}
+                              </Badge>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2.5">
+                              <div
+                                className={`${getUsageColor(usagePercent)} h-2.5 rounded-full transition-all duration-500`}
+                                style={{
+                                  width: `${Math.min(usagePercent, 100)}%`,
+                                }}
+                              />
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1 text-right">
+                              {usagePercent.toFixed(1)}% utilizado
+                            </p>
+                          </>
+                        );
+                      })()}
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
+                      <Button variant="ghost" size="sm" onClick={() => handleEdit(card)} className="w-full sm:w-auto min-h-[44px]">
+                        <Edit className="h-4 w-4 mr-1" />
+                        Editar
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => handleDelete(card.id)} className="w-full sm:w-auto min-h-[44px]">
+                        <Trash2 className="h-4 w-4 mr-1 text-destructive" />
+                        Eliminar
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+            </div>
           ))
         )}
       </div>

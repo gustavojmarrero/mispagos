@@ -14,6 +14,10 @@ import { WeeklyCashFlowCard } from '@/components/WeeklyCashFlowCard';
 import { CardPeriodAnalysisCard } from '@/components/CardPeriodAnalysisCard';
 import { SmartAlertsList } from '@/components/SmartAlertsList';
 import { WeeklyTimeline } from '@/components/WeeklyTimeline';
+import { DateRangeFilter, type DateRange } from '@/components/dashboard/DateRangeFilter';
+import { motion } from 'framer-motion';
+import { staggerContainer, staggerItem } from '@/utils/animations';
+import { getPeriodContext } from '@/utils/periodContext';
 
 export function Dashboard() {
   const { currentUser } = useAuth();
@@ -22,6 +26,11 @@ export function Dashboard() {
   const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: null,
+    to: null,
+    preset: 'current-month'
+  });
 
   useEffect(() => {
     if (!currentUser) return;
@@ -83,32 +92,60 @@ export function Dashboard() {
     fetchData();
   }, [currentUser]);
 
-  // Calcular métricas usando las nuevas funciones
+  // Inicializar el rango de fechas al cargar
+  useEffect(() => {
+    if (dateRange.preset === 'current-month' && !dateRange.from) {
+      const now = new Date();
+      const from = new Date(now.getFullYear(), now.getMonth(), 1);
+      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+      setDateRange({ from, to, preset: 'current-month' });
+    }
+  }, []);
+
+  // Obtener contexto del período para cálculos
+  const periodContext = useMemo(
+    () => getPeriodContext(dateRange.preset, dateRange.from, dateRange.to),
+    [dateRange]
+  );
+
+  // Filtrar payment instances por rango de fechas
+  const filteredPaymentInstances = useMemo(() => {
+    if (!dateRange.from || !dateRange.to) {
+      return paymentInstances;
+    }
+
+    return paymentInstances.filter((instance) => {
+      const dueDate = instance.dueDate instanceof Date ? instance.dueDate : new Date(instance.dueDate);
+      return dueDate >= dateRange.from! && dueDate <= dateRange.to!;
+    });
+  }, [paymentInstances, dateRange]);
+
+  // Calcular métricas usando los datos filtrados
   const cashFlow = useMemo(
-    () => calculateWeeklyCashFlow(paymentInstances, services),
-    [paymentInstances, services]
+    () => calculateWeeklyCashFlow(filteredPaymentInstances, services, periodContext.isHistorical),
+    [filteredPaymentInstances, services, periodContext.isHistorical]
   );
 
   const cardPeriods = useMemo(
-    () => analyzeCardPeriods(cards, paymentInstances, scheduledPayments),
-    [cards, paymentInstances, scheduledPayments]
+    () => analyzeCardPeriods(cards, filteredPaymentInstances, scheduledPayments),
+    [cards, filteredPaymentInstances, scheduledPayments]
   );
 
   const smartAlerts = useMemo(
     () =>
       generateSmartAlerts(
         cards,
-        paymentInstances,
+        filteredPaymentInstances,
         scheduledPayments,
         cardPeriods,
         cashFlow
       ),
-    [cards, paymentInstances, scheduledPayments, cardPeriods, cashFlow]
+    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow]
   );
 
   const timeline = useMemo(
-    () => getNext7DaysTimeline(paymentInstances),
-    [paymentInstances]
+    () => getNext7DaysTimeline(filteredPaymentInstances),
+    [filteredPaymentInstances]
   );
 
   if (loading) {
@@ -121,24 +158,54 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Dashboard</h2>
         <p className="text-sm sm:text-base text-muted-foreground">
           Resumen inteligente de tus finanzas
         </p>
-      </div>
+      </motion.div>
 
-      {/* Alertas Inteligentes */}
-      <SmartAlertsList alerts={smartAlerts} />
+      <motion.div
+        variants={staggerContainer}
+        initial="hidden"
+        animate="visible"
+        className="space-y-6"
+      >
+        {/* Filtro de rango de fechas */}
+        <motion.div variants={staggerItem}>
+          <DateRangeFilter value={dateRange} onChange={setDateRange} />
+        </motion.div>
 
-      {/* Flujo de Efectivo Semanal y Mensual */}
-      <WeeklyCashFlowCard cashFlow={cashFlow} />
+        {/* Alertas Inteligentes */}
+        {periodContext.showAlerts && (
+          <motion.div variants={staggerItem}>
+            <SmartAlertsList alerts={smartAlerts} />
+          </motion.div>
+        )}
 
-      {/* Análisis de Tarjetas por Período */}
-      <CardPeriodAnalysisCard analyses={cardPeriods} />
+        {/* Flujo de Efectivo Semanal y Mensual */}
+        <motion.div variants={staggerItem}>
+          <WeeklyCashFlowCard cashFlow={cashFlow} dateRange={dateRange} />
+        </motion.div>
 
-      {/* Timeline de Próximos 7 Días */}
-      <WeeklyTimeline timeline={timeline} />
+        {/* Análisis de Tarjetas por Período */}
+        {periodContext.showCardPeriods && (
+          <motion.div variants={staggerItem}>
+            <CardPeriodAnalysisCard analyses={cardPeriods} />
+          </motion.div>
+        )}
+
+        {/* Timeline de Próximos 7 Días */}
+        {periodContext.showTimeline && (
+          <motion.div variants={staggerItem}>
+            <WeeklyTimeline timeline={timeline} />
+          </motion.div>
+        )}
+      </motion.div>
     </div>
   );
 }
