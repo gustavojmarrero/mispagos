@@ -1,0 +1,483 @@
+import type { Card, PaymentInstance, ScheduledPayment, Service } from './types';
+
+/**
+ * Interfaces para métricas del Dashboard
+ */
+
+export interface WeeklyCashFlow {
+  thisWeek: {
+    totalPending: number;
+    byTransfer: number;
+    byCard: number;
+    instancesCount: number;
+    urgent: number; // Vencidos o vencen hoy
+  };
+  thisMonth: {
+    totalPending: number;
+    totalPaid: number;
+    remaining: number;
+    percentagePaid: number;
+  };
+}
+
+export interface CardPeriodAnalysis {
+  card: Card;
+  currentPeriod: {
+    closingDate: Date;
+    dueDate: Date;
+    daysUntilDue: number;
+    totalCharges: number; // Saldo actual de la tarjeta
+    hasProgrammedPayment: boolean;
+    programmedAmount: number;
+    status: 'covered' | 'not_programmed' | 'overdue';
+  };
+}
+
+export type AlertSeverity = 'critical' | 'warning' | 'info';
+export type AlertType =
+  | 'card_no_payment'
+  | 'overdue'
+  | 'upcoming'
+  | 'high_week'
+  | 'low_credit';
+
+export interface SmartAlert {
+  id: string;
+  type: AlertType;
+  severity: AlertSeverity;
+  title: string;
+  description: string;
+  action: {
+    label: string;
+    route: string;
+    params?: Record<string, any>;
+  };
+  data: any;
+}
+
+export interface DayTimeline {
+  date: Date;
+  dayName: string;
+  totalAmount: number;
+  instances: PaymentInstance[];
+  isToday: boolean;
+}
+
+/**
+ * Calcula el flujo de efectivo semanal y mensual
+ */
+export function calculateWeeklyCashFlow(
+  instances: PaymentInstance[],
+  services: Service[]
+): WeeklyCashFlow {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Calcular próximo lunes
+  const nextMonday = new Date(today);
+  const currentDay = today.getDay();
+  const daysUntilMonday =
+    currentDay === 0 ? 1 : currentDay === 1 ? 7 : 8 - currentDay;
+  nextMonday.setDate(nextMonday.getDate() + daysUntilMonday);
+  nextMonday.setHours(23, 59, 59, 999);
+
+  // Primer día del mes actual
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  firstDayOfMonth.setHours(0, 0, 0, 0);
+
+  // Último día del mes actual
+  const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  lastDayOfMonth.setHours(23, 59, 59, 999);
+
+  // Filtrar instancias de esta semana (pendientes)
+  const thisWeekInstances = instances.filter(
+    (instance) =>
+      instance.status === 'pending' &&
+      instance.dueDate >= today &&
+      instance.dueDate <= nextMonday
+  );
+
+  // Filtrar instancias del mes (pendientes)
+  const thisMonthPending = instances.filter(
+    (instance) =>
+      instance.status === 'pending' &&
+      instance.dueDate >= firstDayOfMonth &&
+      instance.dueDate <= lastDayOfMonth
+  );
+
+  // Filtrar instancias del mes (pagadas)
+  const thisMonthPaid = instances.filter(
+    (instance) =>
+      instance.status === 'paid' &&
+      instance.dueDate >= firstDayOfMonth &&
+      instance.dueDate <= lastDayOfMonth
+  );
+
+  // Calcular totales semanales
+  let totalPending = 0;
+  let byTransfer = 0;
+  let byCard = 0;
+  let urgent = 0;
+
+  thisWeekInstances.forEach((instance) => {
+    totalPending += instance.amount;
+
+    // Determinar método de pago
+    if (instance.paymentType === 'card_payment') {
+      // Pago de tarjeta siempre es transferencia
+      byTransfer += instance.amount;
+    } else if (instance.serviceId) {
+      // Buscar el servicio para ver su método de pago
+      const service = services.find((s) => s.id === instance.serviceId);
+      if (service?.paymentMethod === 'card') {
+        byCard += instance.amount;
+      } else {
+        byTransfer += instance.amount;
+      }
+    }
+
+    // Contar urgentes (vencidos o vencen hoy)
+    if (instance.dueDate <= today) {
+      urgent++;
+    }
+  });
+
+  // Calcular totales mensuales
+  const monthlyPending = thisMonthPending.reduce(
+    (sum, instance) => sum + instance.amount,
+    0
+  );
+  const monthlyPaid = thisMonthPaid.reduce(
+    (sum, instance) => sum + instance.amount,
+    0
+  );
+  const monthlyTotal = monthlyPending + monthlyPaid;
+  const percentagePaid = monthlyTotal > 0 ? (monthlyPaid / monthlyTotal) * 100 : 0;
+
+  return {
+    thisWeek: {
+      totalPending,
+      byTransfer,
+      byCard,
+      instancesCount: thisWeekInstances.length,
+      urgent,
+    },
+    thisMonth: {
+      totalPending: monthlyPending,
+      totalPaid: monthlyPaid,
+      remaining: monthlyPending,
+      percentagePaid,
+    },
+  };
+}
+
+/**
+ * Calcula la fecha de corte para una tarjeta en un mes específico
+ */
+function getClosingDate(card: Card, referenceDate: Date): Date {
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+
+  const closingDate = new Date(year, month, card.closingDay);
+  closingDate.setHours(0, 0, 0, 0);
+
+  return closingDate;
+}
+
+/**
+ * Calcula la fecha de pago esperada para una tarjeta basado en su corte
+ */
+function getExpectedDueDate(card: Card, closingDate: Date): Date {
+  const year = closingDate.getFullYear();
+  const month = closingDate.getMonth();
+
+  let dueMonth = month;
+  let dueYear = year;
+
+  if (card.dueDay <= card.closingDay) {
+    dueMonth = month + 1;
+    if (dueMonth > 11) {
+      dueMonth = 0;
+      dueYear = year + 1;
+    }
+  }
+
+  const dueDate = new Date(dueYear, dueMonth, card.dueDay);
+  dueDate.setHours(23, 59, 59, 999);
+
+  return dueDate;
+}
+
+/**
+ * Analiza el período actual de cada tarjeta
+ */
+export function analyzeCardPeriods(
+  cards: Card[],
+  instances: PaymentInstance[],
+  scheduled: ScheduledPayment[]
+): CardPeriodAnalysis[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return cards.map((card) => {
+    // Calcular fecha de corte del mes actual
+    const closingDate = getClosingDate(card, today);
+
+    // Calcular fecha de pago esperada
+    const dueDate = getExpectedDueDate(card, closingDate);
+
+    // Calcular días hasta vencimiento
+    const daysUntilDue = Math.ceil(
+      (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    // Buscar pagos programados para esta tarjeta en el período
+    const cardInstances = instances.filter(
+      (instance) =>
+        instance.cardId === card.id &&
+        instance.paymentType === 'card_payment' &&
+        instance.dueDate >= closingDate &&
+        instance.dueDate <= dueDate
+    );
+
+    const cardScheduled = scheduled.filter(
+      (s) =>
+        s.cardId === card.id &&
+        s.paymentType === 'card_payment' &&
+        s.isActive === true &&
+        s.paymentDate &&
+        s.paymentDate >= closingDate &&
+        s.paymentDate <= dueDate
+    );
+
+    const hasProgrammedPayment =
+      cardInstances.some(
+        (i) => i.status === 'pending' || i.status === 'paid'
+      ) || cardScheduled.length > 0;
+
+    const programmedAmount =
+      cardInstances.reduce((sum, i) => sum + i.amount, 0) +
+      cardScheduled.reduce((sum, s) => sum + s.amount, 0);
+
+    // Determinar status
+    let status: 'covered' | 'not_programmed' | 'overdue';
+    if (daysUntilDue < 0) {
+      status = 'overdue';
+    } else if (hasProgrammedPayment) {
+      status = 'covered';
+    } else {
+      status = 'not_programmed';
+    }
+
+    return {
+      card,
+      currentPeriod: {
+        closingDate,
+        dueDate,
+        daysUntilDue,
+        totalCharges: card.currentBalance,
+        hasProgrammedPayment,
+        programmedAmount,
+        status,
+      },
+    };
+  });
+}
+
+/**
+ * Genera alertas inteligentes basadas en el estado del sistema
+ */
+export function generateSmartAlerts(
+  cards: Card[],
+  instances: PaymentInstance[],
+  scheduled: ScheduledPayment[],
+  cardPeriods: CardPeriodAnalysis[],
+  cashFlow: WeeklyCashFlow
+): SmartAlert[] {
+  const alerts: SmartAlert[] = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // 1. Alertas de tarjetas sin pago después de corte
+  const cardsNeedingPayment = cardPeriods.filter(
+    (analysis) =>
+      analysis.currentPeriod.status === 'not_programmed' &&
+      today > analysis.currentPeriod.closingDate
+  );
+
+  cardsNeedingPayment.forEach((analysis) => {
+    const daysAfterClosing = Math.floor(
+      (today.getTime() - analysis.currentPeriod.closingDate.getTime()) /
+        (1000 * 60 * 60 * 24)
+    );
+
+    alerts.push({
+      id: `card-no-payment-${analysis.card.id}`,
+      type: 'card_no_payment',
+      severity: 'critical',
+      title: 'Tarjeta sin pago programado',
+      description: `${analysis.card.name} cortó hace ${daysAfterClosing} día${daysAfterClosing !== 1 ? 's' : ''} y no tiene pago programado`,
+      action: {
+        label: 'Programar pago',
+        route: '/payments',
+        params: { cardId: analysis.card.id },
+      },
+      data: analysis,
+    });
+  });
+
+  // 2. Alertas de pagos vencidos
+  const overdueInstances = instances.filter(
+    (instance) => instance.status === 'pending' && instance.dueDate < today
+  );
+
+  if (overdueInstances.length > 0) {
+    const overdueTotal = overdueInstances.reduce(
+      (sum, instance) => sum + instance.amount,
+      0
+    );
+    alerts.push({
+      id: 'overdue-payments',
+      type: 'overdue',
+      severity: 'critical',
+      title: 'Pagos vencidos',
+      description: `Tienes ${overdueInstances.length} pago${overdueInstances.length !== 1 ? 's' : ''} vencido${overdueInstances.length !== 1 ? 's' : ''} por $${overdueTotal.toFixed(2)}`,
+      action: {
+        label: 'Ver pagos',
+        route: '/calendar',
+      },
+      data: overdueInstances,
+    });
+  }
+
+  // 3. Alertas de pagos urgentes (próximos 1-2 días)
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 2);
+  tomorrow.setHours(23, 59, 59, 999);
+
+  const urgentInstances = instances.filter(
+    (instance) =>
+      instance.status === 'pending' &&
+      instance.dueDate >= today &&
+      instance.dueDate <= tomorrow
+  );
+
+  if (urgentInstances.length > 0) {
+    const urgentTotal = urgentInstances.reduce(
+      (sum, instance) => sum + instance.amount,
+      0
+    );
+    alerts.push({
+      id: 'upcoming-payments',
+      type: 'upcoming',
+      severity: 'warning',
+      title: 'Pagos próximos',
+      description: `${urgentInstances.length} pago${urgentInstances.length !== 1 ? 's' : ''} vence${urgentInstances.length === 1 ? '' : 'n'} en los próximos 2 días por $${urgentTotal.toFixed(2)}`,
+      action: {
+        label: 'Ver calendario',
+        route: '/calendar',
+      },
+      data: urgentInstances,
+    });
+  }
+
+  // 4. Alertas de semana pesada (>40% más que promedio)
+  const avgWeekly = cashFlow.thisMonth.totalPending / 4; // Aproximado
+  if (cashFlow.thisWeek.totalPending > avgWeekly * 1.4) {
+    const percentage = Math.round(
+      ((cashFlow.thisWeek.totalPending - avgWeekly) / avgWeekly) * 100
+    );
+    alerts.push({
+      id: 'high-week',
+      type: 'high_week',
+      severity: 'info',
+      title: 'Semana con gastos altos',
+      description: `Esta semana pagarás ${percentage}% más que el promedio mensual`,
+      action: {
+        label: 'Ver detalles',
+        route: '/calendar',
+      },
+      data: { weekly: cashFlow.thisWeek.totalPending, average: avgWeekly },
+    });
+  }
+
+  // 5. Alertas de crédito bajo (<20%)
+  const lowCreditCards = cards.filter(
+    (card) => (card.availableCredit / card.creditLimit) * 100 < 20
+  );
+
+  lowCreditCards.forEach((card) => {
+    const percentage = Math.round(
+      (card.availableCredit / card.creditLimit) * 100
+    );
+    alerts.push({
+      id: `low-credit-${card.id}`,
+      type: 'low_credit',
+      severity: 'warning',
+      title: 'Crédito disponible bajo',
+      description: `${card.name} solo tiene ${percentage}% de crédito disponible`,
+      action: {
+        label: 'Ver tarjeta',
+        route: '/cards',
+      },
+      data: card,
+    });
+  });
+
+  // Ordenar por severidad (critical > warning > info)
+  const severityOrder = { critical: 0, warning: 1, info: 2 };
+  return alerts.sort(
+    (a, b) => severityOrder[a.severity] - severityOrder[b.severity]
+  );
+}
+
+/**
+ * Genera timeline de próximos 7 días
+ */
+export function getNext7DaysTimeline(
+  instances: PaymentInstance[]
+): DayTimeline[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const timeline: DayTimeline[] = [];
+  const dayNames = [
+    'Domingo',
+    'Lunes',
+    'Martes',
+    'Miércoles',
+    'Jueves',
+    'Viernes',
+    'Sábado',
+  ];
+
+  for (let i = 0; i < 7; i++) {
+    const date = new Date(today);
+    date.setDate(date.getDate() + i);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Filtrar instancias pendientes de este día
+    const dayInstances = instances.filter(
+      (instance) =>
+        instance.status === 'pending' &&
+        instance.dueDate >= date &&
+        instance.dueDate <= endOfDay
+    );
+
+    const totalAmount = dayInstances.reduce(
+      (sum, instance) => sum + instance.amount,
+      0
+    );
+
+    timeline.push({
+      date,
+      dayName: dayNames[date.getDay()],
+      totalAmount,
+      instances: dayInstances,
+      isToday: i === 0,
+    });
+  }
+
+  return timeline;
+}
