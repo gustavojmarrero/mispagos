@@ -3,6 +3,7 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  householdId: string; // Identificador del hogar compartido
 }
 
 // Card Types
@@ -11,7 +12,8 @@ export type CardOwner = "Guatever" | "Sandra" | "Gustavo";
 
 export interface Card {
   id: string;
-  userId: string;
+  userId: string; // Deprecated: mantener por compatibilidad
+  householdId: string; // Identificador del hogar compartido
   name: string;
   lastDigits: string;
   closingDay: number; // Día del mes (1-31)
@@ -20,6 +22,10 @@ export interface Card {
   currentBalance: number;
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string; // userId de quien creó
+  createdByName: string; // Nombre visible del creador
+  updatedBy: string; // userId de quien actualizó
+  updatedByName: string; // Nombre visible del último editor
   // Nuevos campos
   physicalCardNumber?: string;
   cardType: CardType;
@@ -52,9 +58,14 @@ export interface Bank {
   id: string;
   name: string;
   code?: string;
-  userId: string;
+  userId: string; // Deprecated: mantener por compatibilidad
+  householdId: string;
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string;
+  createdByName: string;
+  updatedBy: string;
+  updatedByName: string;
 }
 
 export interface BankFormData {
@@ -69,9 +80,14 @@ export interface Service {
   id: string;
   name: string;
   paymentMethod: PaymentMethod;
-  userId: string;
+  userId: string; // Deprecated: mantener por compatibilidad
+  householdId: string;
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string;
+  createdByName: string;
+  updatedBy: string;
+  updatedByName: string;
 }
 
 export interface ServiceFormData {
@@ -86,7 +102,8 @@ export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Domingo, 5 = Viernes
 
 export interface ScheduledPayment {
   id: string;
-  userId: string;
+  userId: string; // Deprecated: mantener por compatibilidad
+  householdId: string;
   paymentType: PaymentType;
   frequency?: PaymentFrequency; // Solo para servicios
   description: string;
@@ -103,6 +120,10 @@ export interface ScheduledPayment {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string;
+  createdByName: string;
+  updatedBy: string;
+  updatedByName: string;
 }
 
 export interface ScheduledPaymentFormData {
@@ -123,7 +144,8 @@ export type PaymentStatus = 'pending' | 'paid' | 'overdue' | 'cancelled';
 
 export interface PaymentInstance {
   id: string;
-  userId: string;
+  userId: string; // Deprecated: mantener por compatibilidad
+  householdId: string; // Identificador del hogar compartido
   scheduledPaymentId: string; // Referencia al template
   paymentType: PaymentType; // Heredado del template
   dueDate: Date; // Fecha específica de este pago
@@ -139,6 +161,10 @@ export interface PaymentInstance {
   notes?: string; // Para justificar ajustes o anotar razones
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string; // userId de quien creó
+  createdByName: string; // Nombre visible del creador
+  updatedBy: string; // userId de quien actualizó
+  updatedByName: string; // Nombre visible del último editor
 }
 
 export interface PaymentInstanceFormData {
@@ -149,12 +175,15 @@ export interface PaymentInstanceFormData {
 // Payment History Types (para tracking de adelantos)
 export interface PaymentHistory {
   id: string;
-  userId: string;
+  userId: string; // Deprecated: mantener por compatibilidad
+  householdId: string; // Identificador del hogar compartido
   scheduledPaymentId: string;
   amount: number;
   paidDate: Date;
   notes?: string;
   createdAt: Date;
+  createdBy: string; // userId de quien creó
+  createdByName: string; // Nombre visible del creador
 }
 
 export interface PaymentHistoryFormData {
@@ -168,7 +197,8 @@ export interface PaymentHistoryFormData {
 /** @deprecated Use ScheduledPayment instead */
 export interface RecurringExpense {
   id: string;
-  userId: string;
+  userId: string; // Deprecated: mantener por compatibilidad
+  householdId: string; // Identificador del hogar compartido
   cardId: string;
   description: string;
   amount: number;
@@ -176,6 +206,10 @@ export interface RecurringExpense {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  createdBy: string; // userId de quien creó
+  createdByName: string; // Nombre visible del creador
+  updatedBy: string; // userId de quien actualizó
+  updatedByName: string; // Nombre visible del último editor
 }
 
 /** @deprecated Use ScheduledPaymentFormData instead */
@@ -190,7 +224,8 @@ export interface RecurringExpenseFormData {
 // Payment History Types (Fase 2)
 export interface Payment {
   id: string;
-  userId: string;
+  userId: string; // Deprecated: mantener por compatibilidad
+  householdId: string; // Identificador del hogar compartido
   cardId: string;
   expenseId?: string; // Referencia al gasto recurrente si aplica
   amount: number;
@@ -199,6 +234,10 @@ export interface Payment {
   isPaid: boolean;
   notes?: string;
   createdAt: Date;
+  createdBy: string; // userId de quien creó
+  createdByName: string; // Nombre visible del creador
+  updatedBy: string; // userId de quien actualizó
+  updatedByName: string; // Nombre visible del último editor
 }
 
 // Dashboard Summary Types

@@ -95,7 +95,7 @@ export function Cards() {
     try {
       const cardsQuery = query(
         collection(db, 'cards'),
-        where('userId', '==', currentUser.id)
+        where('householdId', '==', currentUser.householdId)
       );
       const snapshot = await getDocs(cardsQuery);
       const cardsData = snapshot.docs.map((doc) => ({
@@ -153,13 +153,20 @@ export function Cards() {
         await updateDoc(doc(db, 'cards', editingCard.id), {
           ...dataToSave,
           updatedAt: serverTimestamp(),
+          updatedBy: currentUser.id,
+          updatedByName: currentUser.name,
         });
       } else {
         await addDoc(collection(db, 'cards'), {
           ...dataToSave,
-          userId: currentUser.id,
+          userId: currentUser.id, // Mantener por compatibilidad
+          householdId: currentUser.householdId,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          createdBy: currentUser.id,
+          createdByName: currentUser.name,
+          updatedBy: currentUser.id,
+          updatedByName: currentUser.name,
         });
       }
 

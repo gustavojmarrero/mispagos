@@ -88,7 +88,7 @@ export function PaymentCalendar() {
     try {
       const cardsQuery = query(
         collection(db, 'cards'),
-        where('userId', '==', currentUser.id)
+        where('householdId', '==', currentUser.householdId)
       );
       const snapshot = await getDocs(cardsQuery);
       const cardsData = snapshot.docs.map((doc) => ({
@@ -115,7 +115,7 @@ export function PaymentCalendar() {
 
       const instancesQuery = query(
         collection(db, 'payment_instances'),
-        where('userId', '==', currentUser.id),
+        where('householdId', '==', currentUser.householdId),
         where('dueDate', '>=', Timestamp.fromDate(currentMonthStart)),
         where('dueDate', '<=', Timestamp.fromDate(nextMonthEnd))
       );
@@ -307,12 +307,16 @@ export function PaymentCalendar() {
   };
 
   const handleMarkAsPaid = async (instance: PaymentInstance) => {
+    if (!currentUser) return;
+
     try {
       await updateDoc(doc(db, 'payment_instances', instance.id), {
         status: 'paid',
         paidDate: serverTimestamp(),
         paidAmount: instance.amount,
         updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
       });
 
       toast.success('Pago marcado como realizado');
@@ -324,12 +328,15 @@ export function PaymentCalendar() {
   };
 
   const handleCancelPayment = async (instance: PaymentInstance) => {
+    if (!currentUser) return;
     if (!confirm('¿Estás seguro de cancelar este pago?')) return;
 
     try {
       await updateDoc(doc(db, 'payment_instances', instance.id), {
         status: 'cancelled',
         updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
       });
 
       toast.success('Pago cancelado');
@@ -341,6 +348,7 @@ export function PaymentCalendar() {
   };
 
   const handleUnmarkAsPaid = async (instance: PaymentInstance) => {
+    if (!currentUser) return;
     if (!confirm('¿Estás seguro de desmarcar este pago como realizado?')) return;
 
     try {
@@ -349,6 +357,8 @@ export function PaymentCalendar() {
         paidDate: null,
         paidAmount: null,
         updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
       });
 
       toast.success('Pago marcado como pendiente');
@@ -367,6 +377,7 @@ export function PaymentCalendar() {
   };
 
   const handleSaveAdjustment = async () => {
+    if (!currentUser) return;
     if (!editingInstance) return;
 
     const newAmount = parseCurrencyInput(adjustAmount);
@@ -380,6 +391,8 @@ export function PaymentCalendar() {
         amount: newAmount,
         notes: adjustNotes || null,
         updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
       });
 
       toast.success('Monto ajustado correctamente');

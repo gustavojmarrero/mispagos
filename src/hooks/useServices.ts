@@ -20,7 +20,7 @@ export function useServices() {
       try {
         const servicesQuery = query(
           collection(db, 'services'),
-          where('userId', '==', currentUser.id)
+          where('householdId', '==', currentUser.householdId)
         );
         const snapshot = await getDocs(servicesQuery);
         const servicesData = snapshot.docs.map((doc) => ({

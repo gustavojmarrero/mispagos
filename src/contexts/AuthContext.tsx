@@ -41,16 +41,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         try {
           const userDoc = await getDoc(doc(db, 'users', user.uid));
           if (userDoc.exists()) {
+            const userData = userDoc.data();
             setCurrentUser({
               id: user.uid,
               email: user.email || '',
-              name: userDoc.data().name || '',
+              name: userData.name || '',
+              householdId: userData.householdId || user.uid, // Usar uid como fallback si no existe householdId
             });
           } else {
+            // Si no existe documento de usuario, crear objeto temporal
             setCurrentUser({
               id: user.uid,
               email: user.email || '',
               name: user.email?.split('@')[0] || 'Usuario',
+              householdId: user.uid, // Por defecto, el householdId es el mismo que el userId
             });
           }
         } catch (error) {
@@ -59,6 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: user.uid,
             email: user.email || '',
             name: user.email?.split('@')[0] || 'Usuario',
+            householdId: user.uid, // Por defecto, el householdId es el mismo que el userId
           });
         }
       } else {

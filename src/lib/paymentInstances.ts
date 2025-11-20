@@ -118,7 +118,8 @@ export function generateInstancesForDateRange(
     const dueDate = scheduledPayment.paymentDate;
     if (dueDate >= startDate && dueDate <= endDate) {
       instances.push({
-        userId: scheduledPayment.userId,
+        userId: scheduledPayment.userId, // Mantener por compatibilidad
+        householdId: scheduledPayment.householdId,
         scheduledPaymentId: scheduledPayment.id,
         paymentType: scheduledPayment.paymentType,
         dueDate,
@@ -127,6 +128,10 @@ export function generateInstancesForDateRange(
         status: 'pending',
         cardId: scheduledPayment.cardId,
         serviceId: scheduledPayment.serviceId,
+        createdBy: scheduledPayment.createdBy,
+        createdByName: scheduledPayment.createdByName,
+        updatedBy: scheduledPayment.updatedBy,
+        updatedByName: scheduledPayment.updatedByName,
       });
     }
     return instances;
@@ -142,7 +147,8 @@ export function generateInstancesForDateRange(
       if (!nextOccurrence || nextOccurrence > endDate) break;
 
       instances.push({
-        userId: scheduledPayment.userId,
+        userId: scheduledPayment.userId, // Mantener por compatibilidad
+        householdId: scheduledPayment.householdId,
         scheduledPaymentId: scheduledPayment.id,
         paymentType: scheduledPayment.paymentType,
         dueDate: nextOccurrence,
@@ -151,6 +157,10 @@ export function generateInstancesForDateRange(
         status: 'pending',
         cardId: scheduledPayment.cardId,
         serviceId: scheduledPayment.serviceId,
+        createdBy: scheduledPayment.createdBy,
+        createdByName: scheduledPayment.createdByName,
+        updatedBy: scheduledPayment.updatedBy,
+        updatedByName: scheduledPayment.updatedByName,
       });
 
       // Avanzar al día siguiente para buscar la próxima ocurrencia
@@ -200,7 +210,7 @@ export async function generateCurrentAndNextMonthInstances(
 
   // Verificar cuáles ya existen
   const existingInstances = await getExistingInstances(
-    scheduledPayment.userId,
+    scheduledPayment.householdId,
     scheduledPayment.id
   );
 
@@ -229,12 +239,12 @@ export async function generateCurrentAndNextMonthInstances(
  * Obtiene las instancias existentes de un pago programado
  */
 async function getExistingInstances(
-  userId: string,
+  householdId: string,
   scheduledPaymentId: string
 ): Promise<PaymentInstance[]> {
   const q = query(
     collection(db, 'payment_instances'),
-    where('userId', '==', userId),
+    where('householdId', '==', householdId),
     where('scheduledPaymentId', '==', scheduledPaymentId)
   );
 
@@ -254,7 +264,7 @@ async function getExistingInstances(
  * y las genera si es necesario
  */
 export async function ensureMonthlyInstances(
-  userId: string,
+  householdId: string,
   scheduledPayments: ScheduledPayment[]
 ): Promise<void> {
   const nextMonth = getNextMonthRange();
@@ -265,7 +275,7 @@ export async function ensureMonthlyInstances(
     // Verificar si ya existen instancias para el próximo mes
     const q = query(
       collection(db, 'payment_instances'),
-      where('userId', '==', userId),
+      where('householdId', '==', householdId),
       where('scheduledPaymentId', '==', scheduledPayment.id),
       where('dueDate', '>=', Timestamp.fromDate(nextMonth.start)),
       where('dueDate', '<=', Timestamp.fromDate(nextMonth.end))

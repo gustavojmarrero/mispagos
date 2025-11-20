@@ -121,7 +121,7 @@ export function Payments() {
     try {
       const cardsQuery = query(
         collection(db, 'cards'),
-        where('userId', '==', currentUser.id)
+        where('householdId', '==', currentUser.householdId)
       );
       const snapshot = await getDocs(cardsQuery);
       const cardsData = snapshot.docs.map((doc) => ({
@@ -143,7 +143,7 @@ export function Payments() {
     try {
       const paymentsQuery = query(
         collection(db, 'scheduled_payments'),
-        where('userId', '==', currentUser.id)
+        where('householdId', '==', currentUser.householdId)
       );
       const snapshot = await getDocs(paymentsQuery);
       const paymentsData = snapshot.docs.map((doc) => ({
@@ -222,14 +222,21 @@ export function Payments() {
         await updateDoc(doc(db, 'scheduled_payments', editingPayment.id), {
           ...dataToSave,
           updatedAt: serverTimestamp(),
+          updatedBy: currentUser.id,
+          updatedByName: currentUser.name,
         });
         savedPaymentId = editingPayment.id;
       } else {
         const docRef = await addDoc(collection(db, 'scheduled_payments'), {
           ...dataToSave,
-          userId: currentUser.id,
+          userId: currentUser.id, // Mantener por compatibilidad
+          householdId: currentUser.householdId,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          createdBy: currentUser.id,
+          createdByName: currentUser.name,
+          updatedBy: currentUser.id,
+          updatedByName: currentUser.name,
         });
         savedPaymentId = docRef.id;
       }

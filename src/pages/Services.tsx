@@ -47,7 +47,7 @@ export function Services() {
     try {
       const servicesQuery = query(
         collection(db, 'services'),
-        where('userId', '==', currentUser.id)
+        where('householdId', '==', currentUser.householdId)
       );
       const snapshot = await getDocs(servicesQuery);
       const servicesData = snapshot.docs.map((doc) => ({
@@ -75,14 +75,21 @@ export function Services() {
         await updateDoc(doc(db, 'services', editingService.id), {
           ...formData,
           updatedAt: serverTimestamp(),
+          updatedBy: currentUser.id,
+          updatedByName: currentUser.name,
         });
       } else {
         // Create
         await addDoc(collection(db, 'services'), {
           ...formData,
-          userId: currentUser.id,
+          userId: currentUser.id, // Mantener por compatibilidad
+          householdId: currentUser.householdId,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
+          createdBy: currentUser.id,
+          createdByName: currentUser.name,
+          updatedBy: currentUser.id,
+          updatedByName: currentUser.name,
         });
       }
 

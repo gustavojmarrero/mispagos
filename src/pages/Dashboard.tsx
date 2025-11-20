@@ -31,7 +31,7 @@ export function Dashboard() {
         // Fetch cards
         const cardsQuery = query(
           collection(db, 'cards'),
-          where('userId', '==', currentUser.id)
+          where('householdId', '==', currentUser.householdId)
         );
         const cardsSnapshot = await getDocs(cardsQuery);
         const cardsData = cardsSnapshot.docs.map((doc) => ({
@@ -44,7 +44,7 @@ export function Dashboard() {
         // Fetch payment instances
         const instancesQuery = query(
           collection(db, 'payment_instances'),
-          where('userId', '==', currentUser.id)
+          where('householdId', '==', currentUser.householdId)
         );
         const instancesSnapshot = await getDocs(instancesQuery);
         const instancesData = instancesSnapshot.docs.map((doc) => ({
@@ -59,7 +59,7 @@ export function Dashboard() {
         // Fetch scheduled payments
         const scheduledQuery = query(
           collection(db, 'scheduled_payments'),
-          where('userId', '==', currentUser.id)
+          where('householdId', '==', currentUser.householdId)
         );
         const scheduledSnapshot = await getDocs(scheduledQuery);
         const scheduledData = scheduledSnapshot.docs.map((doc) => ({

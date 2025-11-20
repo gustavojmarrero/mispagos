@@ -20,7 +20,7 @@ export function useBanks() {
       try {
         const banksQuery = query(
           collection(db, 'banks'),
-          where('userId', '==', currentUser.id)
+          where('householdId', '==', currentUser.householdId)
         );
         const snapshot = await getDocs(banksQuery);
         const banksData = snapshot.docs.map((doc) => ({
