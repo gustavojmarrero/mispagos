@@ -5,7 +5,7 @@ import {
   onAuthStateChanged,
   User as FirebaseUser,
 } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { User } from '@/lib/types';
 
@@ -39,31 +39,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         // Obtener datos adicionales del usuario desde Firestore
         try {
-          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          const userDocRef = doc(db, 'users', user.uid);
+          const userDoc = await getDoc(userDocRef);
+
           if (userDoc.exists()) {
             const userData = userDoc.data();
             setCurrentUser({
               id: user.uid,
               email: user.email || '',
               name: userData.name || '',
-              householdId: userData.householdId || user.uid, // Usar uid como fallback si no existe householdId
+              householdId: userData.householdId || user.uid,
             });
           } else {
-            // Si no existe documento de usuario, crear objeto temporal
+            // Si no existe documento de usuario, crearlo
+            const newUserData = {
+              email: user.email || '',
+              name: user.email?.split('@')[0] || 'Usuario',
+              householdId: user.uid, // Por defecto, cada usuario tiene su propio household
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            };
+
+            await setDoc(userDocRef, newUserData);
+
             setCurrentUser({
               id: user.uid,
               email: user.email || '',
-              name: user.email?.split('@')[0] || 'Usuario',
-              householdId: user.uid, // Por defecto, el householdId es el mismo que el userId
+              name: newUserData.name,
+              householdId: user.uid,
             });
+
+            console.log('✅ Documento de usuario creado:', user.uid);
           }
         } catch (error) {
-          console.error('Error fetching user data:', error);
+          console.error('Error fetching/creating user data:', error);
           setCurrentUser({
             id: user.uid,
             email: user.email || '',
             name: user.email?.split('@')[0] || 'Usuario',
-            householdId: user.uid, // Por defecto, el householdId es el mismo que el userId
+            householdId: user.uid,
           });
         }
       } else {
