@@ -89,26 +89,26 @@ export function calculateWeeklyCashFlow(
   const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
   lastDayOfMonth.setHours(23, 59, 59, 999);
 
-  // Filtrar instancias de esta semana (pendientes)
+  // Filtrar instancias de esta semana (pendientes y parciales)
   const thisWeekInstances = instances.filter(
     (instance) =>
-      instance.status === 'pending' &&
+      (instance.status === 'pending' || instance.status === 'partial') &&
       instance.dueDate >= today &&
       instance.dueDate <= nextMonday
   );
 
-  // Filtrar instancias del mes (pendientes)
+  // Filtrar instancias del mes (pendientes y parciales)
   const thisMonthPending = instances.filter(
     (instance) =>
-      instance.status === 'pending' &&
+      (instance.status === 'pending' || instance.status === 'partial') &&
       instance.dueDate >= firstDayOfMonth &&
       instance.dueDate <= lastDayOfMonth
   );
 
-  // Filtrar instancias del mes (pagadas)
-  const thisMonthPaid = instances.filter(
+  // Filtrar instancias del mes (pagadas y parciales)
+  const thisMonthPaidAndPartial = instances.filter(
     (instance) =>
-      instance.status === 'paid' &&
+      (instance.status === 'paid' || instance.status === 'partial') &&
       instance.dueDate >= firstDayOfMonth &&
       instance.dueDate <= lastDayOfMonth
   );
@@ -120,19 +120,24 @@ export function calculateWeeklyCashFlow(
   let urgent = 0;
 
   thisWeekInstances.forEach((instance) => {
-    totalPending += instance.amount;
+    // Para pagos parciales, usar remainingAmount
+    const amountToPay = instance.status === 'partial' && instance.remainingAmount !== undefined
+      ? instance.remainingAmount
+      : instance.amount;
+
+    totalPending += amountToPay;
 
     // Determinar método de pago
     if (instance.paymentType === 'card_payment') {
       // Pago de tarjeta siempre es transferencia
-      byTransfer += instance.amount;
+      byTransfer += amountToPay;
     } else if (instance.serviceId) {
       // Buscar el servicio para ver su método de pago
       const service = services.find((s) => s.id === instance.serviceId);
       if (service?.paymentMethod === 'card') {
-        byCard += instance.amount;
+        byCard += amountToPay;
       } else {
-        byTransfer += instance.amount;
+        byTransfer += amountToPay;
       }
     }
 
@@ -144,11 +149,25 @@ export function calculateWeeklyCashFlow(
 
   // Calcular totales mensuales
   const monthlyPending = thisMonthPending.reduce(
-    (sum, instance) => sum + instance.amount,
+    (sum, instance) => {
+      // Para pagos parciales, usar remainingAmount
+      const amountToPay = instance.status === 'partial' && instance.remainingAmount !== undefined
+        ? instance.remainingAmount
+        : instance.amount;
+      return sum + amountToPay;
+    },
     0
   );
-  const monthlyPaid = thisMonthPaid.reduce(
-    (sum, instance) => sum + instance.amount,
+  const monthlyPaid = thisMonthPaidAndPartial.reduce(
+    (sum, instance) => {
+      // Para pagos completos, usar amount; para parciales, usar paidAmount
+      if (instance.status === 'paid') {
+        return sum + instance.amount;
+      } else if (instance.status === 'partial' && instance.paidAmount !== undefined) {
+        return sum + instance.paidAmount;
+      }
+      return sum;
+    },
     0
   );
   const monthlyTotal = monthlyPending + monthlyPaid;
@@ -255,9 +274,17 @@ export function analyzeCardPeriods(
         (i) => i.status === 'pending' || i.status === 'paid'
       ) || cardScheduled.length > 0;
 
-    const programmedAmount =
-      cardInstances.reduce((sum, i) => sum + i.amount, 0) +
-      cardScheduled.reduce((sum, s) => sum + s.amount, 0);
+    // Usar instancias si existen, si no usar scheduled payments
+    // Evitar duplicación ya que las instancias se generan de los scheduled
+    const programmedAmount = cardInstances.length > 0
+      ? cardInstances.reduce((sum, i) => {
+          // Para pagos parciales, usar remainingAmount
+          const amountToPay = i.status === 'partial' && i.remainingAmount !== undefined
+            ? i.remainingAmount
+            : i.amount;
+          return sum + amountToPay;
+        }, 0)
+      : cardScheduled.reduce((sum, s) => sum + s.amount, 0);
 
     // Determinar status
     let status: 'covered' | 'not_programmed' | 'overdue';
@@ -328,12 +355,18 @@ export function generateSmartAlerts(
 
   // 2. Alertas de pagos vencidos
   const overdueInstances = instances.filter(
-    (instance) => instance.status === 'pending' && instance.dueDate < today
+    (instance) => (instance.status === 'pending' || instance.status === 'partial') && instance.dueDate < today
   );
 
   if (overdueInstances.length > 0) {
     const overdueTotal = overdueInstances.reduce(
-      (sum, instance) => sum + instance.amount,
+      (sum, instance) => {
+        // Para pagos parciales, usar remainingAmount
+        const amountToPay = instance.status === 'partial' && instance.remainingAmount !== undefined
+          ? instance.remainingAmount
+          : instance.amount;
+        return sum + amountToPay;
+      },
       0
     );
     alerts.push({
@@ -357,14 +390,20 @@ export function generateSmartAlerts(
 
   const urgentInstances = instances.filter(
     (instance) =>
-      instance.status === 'pending' &&
+      (instance.status === 'pending' || instance.status === 'partial') &&
       instance.dueDate >= today &&
       instance.dueDate <= tomorrow
   );
 
   if (urgentInstances.length > 0) {
     const urgentTotal = urgentInstances.reduce(
-      (sum, instance) => sum + instance.amount,
+      (sum, instance) => {
+        // Para pagos parciales, usar remainingAmount
+        const amountToPay = instance.status === 'partial' && instance.remainingAmount !== undefined
+          ? instance.remainingAmount
+          : instance.amount;
+        return sum + amountToPay;
+      },
       0
     );
     alerts.push({
@@ -457,16 +496,22 @@ export function getNext7DaysTimeline(
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Filtrar instancias pendientes de este día
+    // Filtrar instancias pendientes y parciales de este día
     const dayInstances = instances.filter(
       (instance) =>
-        instance.status === 'pending' &&
+        (instance.status === 'pending' || instance.status === 'partial') &&
         instance.dueDate >= date &&
         instance.dueDate <= endOfDay
     );
 
     const totalAmount = dayInstances.reduce(
-      (sum, instance) => sum + instance.amount,
+      (sum, instance) => {
+        // Para pagos parciales, usar remainingAmount
+        const amountToPay = instance.status === 'partial' && instance.remainingAmount !== undefined
+          ? instance.remainingAmount
+          : instance.amount;
+        return sum + amountToPay;
+      },
       0
     );
 
