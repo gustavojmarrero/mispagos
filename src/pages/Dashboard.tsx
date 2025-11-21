@@ -13,11 +13,9 @@ import {
 import { WeeklyCashFlowCard } from '@/components/WeeklyCashFlowCard';
 import { SmartAlertsList } from '@/components/SmartAlertsList';
 import { WeeklyTimeline } from '@/components/WeeklyTimeline';
-import { DateRangeFilter, type DateRange } from '@/components/dashboard/DateRangeFilter';
 import { DashboardSkeleton } from '@/components/DashboardSkeleton';
 import { motion } from 'framer-motion';
 import { staggerContainer, staggerItem } from '@/utils/animations';
-import { getPeriodContext } from '@/utils/periodContext';
 
 export function Dashboard() {
   const { currentUser } = useAuth();
@@ -26,11 +24,6 @@ export function Dashboard() {
   const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dateRange, setDateRange] = useState<DateRange>({
-    from: null,
-    to: null,
-    preset: 'current-month'
-  });
 
   useEffect(() => {
     if (!currentUser) return;
@@ -92,38 +85,26 @@ export function Dashboard() {
     fetchData();
   }, [currentUser]);
 
-  // Inicializar el rango de fechas al cargar
-  useEffect(() => {
-    if (dateRange.preset === 'current-month' && !dateRange.from) {
-      const now = new Date();
-      const from = new Date(now.getFullYear(), now.getMonth(), 1);
-      const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
-      setDateRange({ from, to, preset: 'current-month' });
-    }
+  // Rango de fechas fijo: mes actual
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    return { from, to, preset: 'current-month' as const };
   }, []);
 
-  // Obtener contexto del período para cálculos
-  const periodContext = useMemo(
-    () => getPeriodContext(dateRange.preset, dateRange.from, dateRange.to),
-    [dateRange]
-  );
-
-  // Filtrar payment instances por rango de fechas
+  // Filtrar payment instances por mes actual
   const filteredPaymentInstances = useMemo(() => {
-    if (!dateRange.from || !dateRange.to) {
-      return paymentInstances;
-    }
-
     return paymentInstances.filter((instance) => {
       const dueDate = instance.dueDate instanceof Date ? instance.dueDate : new Date(instance.dueDate);
-      return dueDate >= dateRange.from! && dueDate <= dateRange.to!;
+      return dueDate >= dateRange.from && dueDate <= dateRange.to;
     });
   }, [paymentInstances, dateRange]);
 
   // Calcular métricas usando los datos filtrados
   const cashFlow = useMemo(
-    () => calculateWeeklyCashFlow(filteredPaymentInstances, services, periodContext.isHistorical),
-    [filteredPaymentInstances, services, periodContext.isHistorical]
+    () => calculateWeeklyCashFlow(filteredPaymentInstances, services, false),
+    [filteredPaymentInstances, services]
   );
 
   const cardPeriods = useMemo(
@@ -171,17 +152,10 @@ export function Dashboard() {
         animate="visible"
         className="space-y-6"
       >
-        {/* Filtro de rango de fechas */}
-        <motion.div variants={staggerItem}>
-          <DateRangeFilter value={dateRange} onChange={setDateRange} />
-        </motion.div>
-
         {/* Alertas Inteligentes */}
-        {periodContext.showAlerts && (
-          <motion.div variants={staggerItem}>
-            <SmartAlertsList alerts={smartAlerts} />
-          </motion.div>
-        )}
+        <motion.div variants={staggerItem}>
+          <SmartAlertsList alerts={smartAlerts} />
+        </motion.div>
 
         {/* Flujo de Efectivo Semanal y Mensual */}
         <motion.div variants={staggerItem}>
@@ -189,11 +163,9 @@ export function Dashboard() {
         </motion.div>
 
         {/* Timeline de Próximos 7 Días */}
-        {periodContext.showTimeline && (
-          <motion.div variants={staggerItem}>
-            <WeeklyTimeline timeline={timeline} />
-          </motion.div>
-        )}
+        <motion.div variants={staggerItem}>
+          <WeeklyTimeline timeline={timeline} />
+        </motion.div>
       </motion.div>
     </div>
   );

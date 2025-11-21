@@ -45,8 +45,6 @@ import {
   X,
   Edit,
   Banknote,
-  Filter,
-  CalendarClock,
   CalendarRange,
   RotateCcw,
   Plus,
@@ -641,119 +639,81 @@ export function PaymentCalendar() {
         <Calendar className="h-8 w-8 text-primary flex-shrink-0" />
       </div>
 
-      {/* Filtros */}
-      <Card className="border-2">
-        <CardContent className="pt-6 pb-6">
-          <div className="space-y-4">
-            {/* Header con botón de reset */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Filter className="h-5 w-5 text-primary" />
-                <span className="text-base font-semibold">Filtros</span>
-              </div>
-              {hasNonDefaultFilters() && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleResetFilters}
-                  className="text-xs"
-                >
-                  <RotateCcw className="h-3 w-3 mr-1" />
-                  Resetear
-                </Button>
-              )}
+      {/* Filtros compactos */}
+      <Card className="shadow-sm">
+        <CardContent className="pt-6">
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+            {/* Filtro de período */}
+            <div className="flex items-center gap-2">
+              <CalendarRange className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Período:</span>
+              <Select value={timeFilter} onValueChange={(value) => setTimeFilter(value as TimeFilter)}>
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="this_week">Esta semana</SelectItem>
+                  <SelectItem value="next_week">Próxima semana</SelectItem>
+                  <SelectItem value="this_month">Este mes</SelectItem>
+                  <SelectItem value="next_month">Próximo mes</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Filtros principales */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Filtro de período */}
-              <div className="space-y-2">
-                <Label htmlFor="time-filter" className="text-xs sm:text-sm font-medium flex items-center gap-2">
-                  <CalendarRange className="h-4 w-4" />
-                  Período
-                </Label>
-                <Select value={timeFilter} onValueChange={(value) => setTimeFilter(value as TimeFilter)}>
-                  <SelectTrigger id="time-filter" className="w-full">
-                    <SelectValue placeholder="Seleccionar período" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">📅 Todos</SelectItem>
-                    <SelectItem value="this_week">📆 Esta semana</SelectItem>
-                    <SelectItem value="next_week">📅 Próxima semana</SelectItem>
-                    <SelectItem value="this_month">📊 Este mes</SelectItem>
-                    <SelectItem value="next_month">📊 Próximo mes</SelectItem>
-                    <SelectItem value="custom">🔧 Rango específico</SelectItem>
-                  </SelectContent>
-                </Select>
+            {/* Rango de fechas */}
+            {timeFilter !== 'all' && timeFilter !== 'custom' && (
+              <span className="text-sm text-muted-foreground">{getDateRangeDescription()}</span>
+            )}
 
-                {/* Badge con rango de fechas */}
-                {timeFilter !== 'all' && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <Badge variant="secondary" className="text-xs font-normal">
-                      <CalendarClock className="h-3 w-3 mr-1" />
-                      {getDateRangeDescription()}
-                    </Badge>
-                  </div>
-                )}
-              </div>
-
-              {/* Filtro de estado */}
-              <div className="space-y-2">
-                <Label className="text-xs sm:text-sm font-medium flex items-center gap-2">
-                  <Filter className="h-4 w-4" />
-                  Estado
-                </Label>
-                <div className="flex items-center justify-between h-10 px-3 py-2 border rounded-md bg-background">
-                  <Label htmlFor="pending-filter" className="text-sm font-normal cursor-pointer">
-                    Solo pendientes
-                  </Label>
-                  <Switch
-                    id="pending-filter"
-                    checked={showPendingOnly}
-                    onCheckedChange={setShowPendingOnly}
-                  />
-                </div>
-                {showPendingOnly && (
-                  <Badge variant="default" className="text-xs font-normal">
-                    Mostrando solo pendientes
-                  </Badge>
-                )}
-              </div>
+            {/* Filtro de pendientes */}
+            <div className="flex items-center gap-2 sm:ml-auto">
+              <Switch
+                id="pending-filter"
+                checked={showPendingOnly}
+                onCheckedChange={setShowPendingOnly}
+              />
+              <Label htmlFor="pending-filter" className="text-sm cursor-pointer">
+                Solo pendientes
+              </Label>
             </div>
 
-            {/* Rango personalizado */}
-            {timeFilter === 'custom' && (
-              <div className="p-4 bg-muted/50 rounded-lg border-2 border-primary/20 space-y-3">
-                <p className="text-sm font-medium">Seleccionar rango personalizado</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label htmlFor="start-date" className="text-xs font-medium">
-                      Fecha inicio
-                    </Label>
-                    <Input
-                      id="start-date"
-                      type="date"
-                      className="w-full"
-                      value={customStartDate ? customStartDate.toISOString().split('T')[0] : ''}
-                      onChange={(e) => setCustomStartDate(e.target.value ? new Date(e.target.value) : null)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="end-date" className="text-xs font-medium">
-                      Fecha fin
-                    </Label>
-                    <Input
-                      id="end-date"
-                      type="date"
-                      className="w-full"
-                      value={customEndDate ? customEndDate.toISOString().split('T')[0] : ''}
-                      onChange={(e) => setCustomEndDate(e.target.value ? new Date(e.target.value) : null)}
-                    />
-                  </div>
-                </div>
-              </div>
+            {/* Botón reset */}
+            {hasNonDefaultFilters() && (
+              <Button variant="ghost" size="sm" onClick={handleResetFilters} className="h-8 px-2">
+                <RotateCcw className="h-4 w-4" />
+              </Button>
             )}
           </div>
+
+          {/* Rango personalizado */}
+          {timeFilter === 'custom' && (
+            <div className="mt-4 pt-4 border-t flex flex-col sm:flex-row gap-3 items-end">
+              <div className="flex-1 space-y-1">
+                <Label htmlFor="start-date" className="text-xs">Desde</Label>
+                <Input
+                  id="start-date"
+                  type="date"
+                  value={customStartDate ? customStartDate.toISOString().split('T')[0] : ''}
+                  onChange={(e) => setCustomStartDate(e.target.value ? new Date(e.target.value) : null)}
+                />
+              </div>
+              <div className="flex-1 space-y-1">
+                <Label htmlFor="end-date" className="text-xs">Hasta</Label>
+                <Input
+                  id="end-date"
+                  type="date"
+                  value={customEndDate ? customEndDate.toISOString().split('T')[0] : ''}
+                  onChange={(e) => setCustomEndDate(e.target.value ? new Date(e.target.value) : null)}
+                  min={customStartDate ? customStartDate.toISOString().split('T')[0] : ''}
+                />
+              </div>
+              {customStartDate && customEndDate && (
+                <span className="text-sm text-muted-foreground whitespace-nowrap">{getDateRangeDescription()}</span>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
