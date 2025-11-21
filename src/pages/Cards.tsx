@@ -38,8 +38,6 @@ import {
 import type { Card as CardType, CardFormData, CardOwner } from '@/lib/types';
 import {
   CreditCard,
-  Edit,
-  Trash2,
   Plus,
   X,
   Smartphone,
@@ -49,6 +47,10 @@ import {
   Search,
   Loader2,
 } from 'lucide-react';
+import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
+import { Pagination } from '@/components/ui/pagination';
+import { CardGridItem } from '@/components/cards/CardGridItem';
+import { CardListItem } from '@/components/cards/CardListItem';
 
 export function Cards() {
   const { currentUser } = useAuth();
@@ -83,6 +85,17 @@ export function Cards() {
   // Estados para búsqueda y ordenamiento
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'balance' | 'bank' | 'credit'>('name');
+
+  // Estados para vista y paginación
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('cards-view-mode');
+    return (saved as ViewMode) || 'grid';
+  });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    const saved = localStorage.getItem('cards-items-per-page');
+    return saved ? parseInt(saved) : 12;
+  });
 
   useEffect(() => {
     fetchCards();
@@ -285,6 +298,30 @@ export function Cards() {
 
     return result;
   }, [cards, searchTerm, sortBy, banks]);
+
+  // Paginación
+  const totalPages = Math.ceil(filteredAndSortedCards.length / itemsPerPage);
+  const paginatedCards = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredAndSortedCards.slice(start, start + itemsPerPage);
+  }, [filteredAndSortedCards, currentPage, itemsPerPage]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, sortBy]);
+
+  // Handlers con persistencia
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem('cards-view-mode', mode);
+  };
+
+  const handleItemsPerPageChange = (items: number) => {
+    setItemsPerPage(items);
+    setCurrentPage(1);
+    localStorage.setItem('cards-items-per-page', items.toString());
+  };
 
   if (loading) {
     return (
@@ -605,7 +642,7 @@ export function Cards() {
         )}
       </AnimatePresence>
 
-      {/* Barra de búsqueda y ordenamiento */}
+      {/* Barra de búsqueda, ordenamiento y vista */}
       {cards.length > 0 && (
         <Card className="shadow-sm">
           <CardContent className="pt-6">
@@ -620,7 +657,7 @@ export function Cards() {
                   className="pl-9"
                 />
               </div>
-              <div className="w-full sm:w-48">
+              <div className="w-full sm:w-40">
                 <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Ordenar por" />
@@ -633,6 +670,7 @@ export function Cards() {
                   </SelectContent>
                 </Select>
               </div>
+              <ViewToggle value={viewMode} onChange={handleViewModeChange} />
             </div>
             {searchTerm && (
               <p className="text-sm text-muted-foreground mt-3">
@@ -644,139 +682,68 @@ export function Cards() {
       )}
 
       {/* Cards List */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {cards.length === 0 ? (
-          <Card className="col-span-full">
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <CreditCard className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No hay tarjetas registradas</p>
-              <p className="text-sm text-muted-foreground">Haz clic en "Nueva Tarjeta" para agregar una</p>
-            </CardContent>
-          </Card>
-        ) : filteredAndSortedCards.length === 0 ? (
-          <Card className="col-span-full">
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Search className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No se encontraron tarjetas</p>
-              <p className="text-sm text-muted-foreground">Intenta con otro término de búsqueda</p>
-            </CardContent>
-          </Card>
-        ) : (
-          filteredAndSortedCards.map((card) => (
-            <div key={card.id}>
-                <Card className="relative hover:shadow-lg transition-shadow duration-300 border-border h-full">
-                  <div className="absolute top-3 right-3 sm:top-4 sm:right-4 bg-white/90 backdrop-blur-sm p-1.5 sm:p-2 rounded-lg shadow-sm">
-                    <img src={getCardIcon(card.cardType)} alt={card.cardType} className="h-6 sm:h-8 w-auto" />
-                  </div>
-
-                  <CardHeader className="pb-3 pr-14 sm:pr-16">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <CardTitle className="text-base sm:text-lg font-bold break-words">{card.name}</CardTitle>
-                        <CardDescription className="flex items-center gap-2 mt-2 flex-wrap">
-                          <span className="font-mono font-medium">**** {card.lastDigits}</span>
-                          <Badge variant="outline" className="text-xs font-medium">
-                            {card.owner}
-                          </Badge>
-                        </CardDescription>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          <p className="text-sm text-muted-foreground font-medium">
-                            {getBankName(card.bankId)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-
-                  <CardContent className="space-y-3">
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Saldo actual</span>
-                        <span className="font-semibold">{formatCurrency(card.currentBalance)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Crédito disponible</span>
-                        <span className="font-semibold text-green-600">{formatCurrency(card.availableCredit)}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Límite</span>
-                        <span>{formatCurrency(card.creditLimit)}</span>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-                      <div className="text-sm">
-                        <span className="text-muted-foreground block">Día de corte</span>
-                        <span className="font-medium">{card.closingDay}</span>
-                      </div>
-                      <div className="text-sm">
-                        <span className="text-muted-foreground block">Día de pago</span>
-                        <span className="font-medium">{card.dueDay}</span>
-                      </div>
-                    </div>
-
-                    {/* Progress bar con estados visuales */}
-                    <div className="pt-2">
-                      {(() => {
-                        const usagePercent = card.creditLimit > 0
-                          ? (card.currentBalance / card.creditLimit) * 100
-                          : 0;
-
-                        const getUsageColor = (percent: number) => {
-                          if (percent < 50) return 'bg-green-500';
-                          if (percent < 80) return 'bg-yellow-500';
-                          return 'bg-red-500';
-                        };
-
-                        const getUsageStatus = (percent: number) => {
-                          if (percent < 50) return { text: 'Uso saludable', color: 'text-green-600 bg-green-50' };
-                          if (percent < 80) return { text: 'Precaución', color: 'text-yellow-600 bg-yellow-50' };
-                          return { text: 'Crítico', color: 'text-red-600 bg-red-50' };
-                        };
-
-                        const status = getUsageStatus(usagePercent);
-
-                        return (
-                          <>
-                            <div className="flex items-center justify-between mb-2">
-                              <span className="text-xs font-medium">Utilización</span>
-                              <Badge className={`text-xs ${status.color} border-0`}>
-                                {status.text}
-                              </Badge>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2.5">
-                              <div
-                                className={`${getUsageColor(usagePercent)} h-2.5 rounded-full transition-all duration-500`}
-                                style={{
-                                  width: `${Math.min(usagePercent, 100)}%`,
-                                }}
-                              />
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-1 text-right">
-                              {usagePercent.toFixed(1)}% utilizado
-                            </p>
-                          </>
-                        );
-                      })()}
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row justify-end gap-2 pt-2">
-                      <Button variant="ghost" size="sm" onClick={() => handleEdit(card)} className="w-full sm:w-auto min-h-[44px]">
-                        <Edit className="h-4 w-4 mr-1" />
-                        Editar
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={() => handleDelete(card.id)} className="w-full sm:w-auto min-h-[44px]">
-                        <Trash2 className="h-4 w-4 mr-1 text-destructive" />
-                        Eliminar
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+      {cards.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <CreditCard className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">No hay tarjetas registradas</p>
+            <p className="text-sm text-muted-foreground">Haz clic en "Nueva Tarjeta" para agregar una</p>
+          </CardContent>
+        </Card>
+      ) : filteredAndSortedCards.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Search className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">No se encontraron tarjetas</p>
+            <p className="text-sm text-muted-foreground">Intenta con otro término de búsqueda</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          {/* Vista Grid */}
+          {viewMode === 'grid' && (
+            <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {paginatedCards.map((card) => (
+                <CardGridItem
+                  key={card.id}
+                  card={card}
+                  bankName={getBankName(card.bankId)}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))}
             </div>
-          ))
-        )}
-      </div>
+          )}
+
+          {/* Vista Lista */}
+          {viewMode === 'list' && (
+            <div className="space-y-2">
+              {paginatedCards.map((card) => (
+                <CardListItem
+                  key={card.id}
+                  card={card}
+                  bankName={getBankName(card.bankId)}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Paginación */}
+          {totalPages > 1 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={filteredAndSortedCards.length}
+              itemsPerPage={itemsPerPage}
+              onPageChange={setCurrentPage}
+              onItemsPerPageChange={handleItemsPerPageChange}
+              className="mt-6"
+            />
+          )}
+        </>
+      )}
 
       {/* Botón flotante fijo - Solo en móvil */}
       <Button
