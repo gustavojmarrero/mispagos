@@ -58,13 +58,13 @@ export function CardListItem({ card, bankName, onEdit, onDelete }: CardListItemP
       </div>
 
       {/* Saldo - visible en tablet+ */}
-      <div className="hidden sm:block text-right min-w-[100px]">
+      <div className="hidden sm:block text-right w-[120px]">
         <div className="text-xs text-muted-foreground">Saldo</div>
         <div className="font-semibold text-sm">{formatCurrency(card.currentBalance)}</div>
       </div>
 
       {/* Disponible - visible en tablet+ */}
-      <div className="hidden md:block text-right min-w-[100px]">
+      <div className="hidden md:block text-right w-[110px]">
         <div className="text-xs text-muted-foreground">Disponible</div>
         <div className="text-sm text-green-600">{formatCurrency(card.availableCredit)}</div>
       </div>
@@ -83,7 +83,7 @@ export function CardListItem({ card, bankName, onEdit, onDelete }: CardListItemP
       </div>
 
       {/* Badge de estado */}
-      <Badge className={`text-[10px] px-2 py-0.5 ${badge.color} border-0 shrink-0 hidden sm:inline-flex`}>
+      <Badge className={`text-[10px] px-2 py-0.5 ${badge.color} border-0 shrink-0 hidden sm:inline-flex w-[75px] justify-center`}>
         {badge.text}
       </Badge>
 

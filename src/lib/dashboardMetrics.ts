@@ -53,6 +53,7 @@ export interface SmartAlert {
     params?: Record<string, any>;
   };
   data: any;
+  sortValue?: number; // Para ordenamiento secundario (ej: días después del corte)
 }
 
 export interface DayTimeline {
@@ -414,6 +415,7 @@ export function generateSmartAlerts(
         params: { cardId: analysis.card.id },
       },
       data: analysis,
+      sortValue: daysAfterClosing, // Para ordenar por días después del corte
     });
   });
 
@@ -528,10 +530,18 @@ export function generateSmartAlerts(
   });
 
   // Ordenar por severidad (critical > warning > info)
+  // Dentro de la misma severidad, ordenar por sortValue (mayor primero = más urgente)
   const severityOrder = { critical: 0, warning: 1, info: 2 };
-  return alerts.sort(
-    (a, b) => severityOrder[a.severity] - severityOrder[b.severity]
-  );
+  return alerts.sort((a, b) => {
+    const severityDiff = severityOrder[a.severity] - severityOrder[b.severity];
+    if (severityDiff !== 0) return severityDiff;
+
+    // Ordenar por sortValue descendente (mayor primero)
+    if (a.sortValue !== undefined && b.sortValue !== undefined) {
+      return b.sortValue - a.sortValue;
+    }
+    return 0;
+  });
 }
 
 /**
