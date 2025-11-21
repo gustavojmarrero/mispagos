@@ -279,6 +279,17 @@ export function PaymentCalendar() {
   };
 
   /**
+   * Obtiene el número de semana del año para una fecha dada (ISO 8601)
+   */
+  const getWeekNumber = (date: Date): number => {
+    const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const dayNum = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  };
+
+  /**
    * Obtiene la descripción del rango de fechas según el filtro seleccionado
    */
   const getDateRangeDescription = (): string => {
@@ -288,6 +299,12 @@ export function PaymentCalendar() {
     }
 
     const formatDate = (date: Date) => date.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+    const weekNum = getWeekNumber(dateRange.start);
+
+    // Incluir número de semana para filtros de semana
+    if (timeFilter === 'this_week' || timeFilter === 'next_week') {
+      return `Semana ${weekNum} · ${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`;
+    }
 
     return `${formatDate(dateRange.start)} - ${formatDate(dateRange.end)}`;
   };
