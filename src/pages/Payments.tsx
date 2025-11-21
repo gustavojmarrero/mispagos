@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   collection,
   query,
@@ -92,6 +93,7 @@ const getOrdinal = (num: number): string => {
 export function Payments() {
   const { currentUser } = useAuth();
   const { services } = useServices();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [payments, setPayments] = useState<ScheduledPayment[]>([]);
   const [cards, setCards] = useState<CardType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,6 +122,25 @@ export function Payments() {
     fetchPayments();
     fetchCards();
   }, [currentUser]);
+
+  // Preseleccionar tarjeta si viene cardId en la URL (desde Dashboard)
+  useEffect(() => {
+    const cardIdFromUrl = searchParams.get('cardId');
+    if (cardIdFromUrl && cards.length > 0 && !loading) {
+      const cardExists = cards.some(c => c.id === cardIdFromUrl);
+      if (cardExists) {
+        // Abrir formulario y preseleccionar tarjeta
+        setShowForm(true);
+        setFormData(prev => ({
+          ...prev,
+          paymentType: 'card_payment',
+          cardId: cardIdFromUrl,
+        }));
+        // Limpiar param de URL para evitar re-triggers
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [searchParams, cards, loading]);
 
   const fetchCards = async () => {
     if (!currentUser) return;
