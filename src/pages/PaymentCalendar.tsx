@@ -4,6 +4,7 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
   updateDoc,
   doc,
   serverTimestamp,
@@ -107,6 +108,61 @@ export function PaymentCalendar() {
       setCards(cardsData);
     } catch (error) {
       console.error('Error fetching cards:', error);
+    }
+  };
+
+  /**
+   * Actualiza el crédito disponible de una tarjeta cuando se efectúa un pago
+   * @param cardId - ID de la tarjeta a actualizar
+   * @param amount - Monto del pago
+   * @param operation - 'add' para sumar al disponible, 'subtract' para restar
+   */
+  const updateCardAvailableCredit = async (
+    cardId: string,
+    amount: number,
+    operation: 'add' | 'subtract'
+  ) => {
+    if (!currentUser) return;
+
+    try {
+      const cardRef = doc(db, 'cards', cardId);
+      const cardSnap = await getDoc(cardRef);
+
+      if (!cardSnap.exists()) {
+        console.error('Card not found:', cardId);
+        return;
+      }
+
+      const cardData = cardSnap.data() as CardType;
+      const currentAvailable = cardData.availableCredit || 0;
+      const creditLimit = cardData.creditLimit || 0;
+
+      // Calcular nuevo disponible
+      const newAvailableCredit = operation === 'add'
+        ? currentAvailable + amount
+        : currentAvailable - amount;
+
+      // Calcular nuevo balance (límite - disponible)
+      const newCurrentBalance = creditLimit - newAvailableCredit;
+
+      await updateDoc(cardRef, {
+        availableCredit: newAvailableCredit,
+        currentBalance: newCurrentBalance,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
+      });
+
+      // Actualizar estado local de tarjetas
+      setCards(prevCards =>
+        prevCards.map(card =>
+          card.id === cardId
+            ? { ...card, availableCredit: newAvailableCredit, currentBalance: newCurrentBalance }
+            : card
+        )
+      );
+    } catch (error) {
+      console.error('Error updating card available credit:', error);
     }
   };
 
@@ -326,6 +382,10 @@ export function PaymentCalendar() {
     if (!currentUser) return;
 
     try {
+      // Calcular el monto que se está pagando ahora
+      // Si hay pagos parciales, solo pagar lo restante; si no, pagar el monto completo
+      const amountBeingPaid = instance.remainingAmount ?? instance.amount;
+
       await updateDoc(doc(db, 'payment_instances', instance.id), {
         status: 'paid',
         paidDate: serverTimestamp(),
@@ -335,6 +395,11 @@ export function PaymentCalendar() {
         updatedBy: currentUser.id,
         updatedByName: currentUser.name,
       });
+
+      // Si es un pago a tarjeta, actualizar el disponible
+      if (instance.paymentType === 'card_payment' && instance.cardId) {
+        await updateCardAvailableCredit(instance.cardId, amountBeingPaid, 'add');
+      }
 
       toast.success('Pago marcado como realizado');
       await fetchInstances();
@@ -372,6 +437,12 @@ export function PaymentCalendar() {
       // Verificar si hay pagos parciales
       const hasPartialPayments = instance.partialPayments && instance.partialPayments.length > 0;
 
+      // Calcular el monto que se había pagado al completar (lo que no eran pagos parciales)
+      const partialPaymentsTotal = hasPartialPayments
+        ? instance.partialPayments!.reduce((sum, p) => sum + p.amount, 0)
+        : 0;
+      const amountToRevert = instance.amount - partialPaymentsTotal;
+
       if (hasPartialPayments) {
         // Si hay pagos parciales, calcular el monto pagado
         const totalPaid = instance.partialPayments!.reduce((sum, p) => sum + p.amount, 0);
@@ -399,6 +470,11 @@ export function PaymentCalendar() {
           updatedByName: currentUser.name,
         });
         toast.success('Pago marcado como pendiente');
+      }
+
+      // Si es un pago a tarjeta, revertir el disponible (restar lo que se había sumado)
+      if (instance.paymentType === 'card_payment' && instance.cardId && amountToRevert > 0) {
+        await updateCardAvailableCredit(instance.cardId, amountToRevert, 'subtract');
       }
 
       await fetchInstances();
@@ -498,6 +574,11 @@ export function PaymentCalendar() {
         updatedByName: currentUser.name,
       });
 
+      // Si es un pago a tarjeta, actualizar el disponible
+      if (editingInstance.paymentType === 'card_payment' && editingInstance.cardId) {
+        await updateCardAvailableCredit(editingInstance.cardId, amountToPay, 'add');
+      }
+
       toast.success(
         isFullyPaid
           ? 'Pago completado'
@@ -558,6 +639,11 @@ export function PaymentCalendar() {
         updatedByName: currentUser.name,
       });
 
+      // Si es un pago a tarjeta, revertir el disponible (restar el monto del pago eliminado)
+      if (instance.paymentType === 'card_payment' && instance.cardId) {
+        await updateCardAvailableCredit(instance.cardId, payment.amount, 'subtract');
+      }
+
       toast.success('Pago parcial eliminado');
       await fetchInstances();
     } catch (error: any) {
@@ -578,6 +664,11 @@ export function PaymentCalendar() {
             updatedBy: currentUser.id,
             updatedByName: currentUser.name,
           });
+
+          // También revertir el disponible si es tarjeta (revertir todos los pagos parciales)
+          if (instance.paymentType === 'card_payment' && instance.cardId && instance.paidAmount) {
+            await updateCardAvailableCredit(instance.cardId, instance.paidAmount, 'subtract');
+          }
 
           toast.success('Pagos parciales limpiados (formato antiguo incompatible)');
           await fetchInstances();
