@@ -22,6 +22,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { es } from 'date-fns/locale';
 import {
   formatCurrency,
   formatCurrencyInput,
@@ -43,7 +46,7 @@ import {
   X,
   CreditCard,
   Store,
-  Calendar,
+  Calendar as CalendarIcon,
   DollarSign,
   Banknote,
   Search,
@@ -68,20 +71,6 @@ const formatDateDDMMYYYY = (date: Date): string => {
   return `${day}/${month}/${year}`;
 };
 
-const parseDateDDMMYYYY = (dateStr: string): Date | null => {
-  const parts = dateStr.split('/');
-  if (parts.length !== 3) return null;
-
-  const day = parseInt(parts[0], 10);
-  const month = parseInt(parts[1], 10) - 1; // Los meses en JS van de 0-11
-  const year = parseInt(parts[2], 10);
-
-  if (isNaN(day) || isNaN(month) || isNaN(year)) return null;
-  if (day < 1 || day > 31 || month < 0 || month > 11 || year < 1900) return null;
-
-  return new Date(year, month, day);
-};
-
 // Obtener ordinal en español
 const getOrdinal = (num: number): string => {
   if (num === 1) return '1er';
@@ -101,7 +90,7 @@ export function Payments() {
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<ScheduledPayment | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'description' | 'amount' | 'type' | 'status'>('description');
+  const [sortBy, setSortBy] = useState<'createdAt' | 'description' | 'amount' | 'type' | 'status'>('createdAt');
   const [formData, setFormData] = useState<ScheduledPaymentFormData>({
     paymentType: 'service_payment',
     frequency: 'monthly',
@@ -116,7 +105,6 @@ export function Payments() {
 
   const [amountInput, setAmountInput] = useState('');
   const [isEditingAmount, setIsEditingAmount] = useState(false);
-  const [dateInput, setDateInput] = useState('');
 
   useEffect(() => {
     fetchPayments();
@@ -309,10 +297,6 @@ export function Payments() {
       serviceId: payment.serviceId || '',
       isActive: payment.isActive,
     });
-    // Cargar la fecha formateada en el input si existe
-    if (payment.paymentDate) {
-      setDateInput(formatDateDDMMYYYY(payment.paymentDate));
-    }
     setShowForm(true);
   };
 
@@ -357,7 +341,6 @@ export function Payments() {
     });
     setAmountInput('');
     setIsEditingAmount(false);
-    setDateInput('');
     setEditingPayment(null);
     setShowForm(false);
   };
@@ -438,6 +421,8 @@ export function Payments() {
     // Apply sorting
     const sorted = [...filtered].sort((a, b) => {
       switch (sortBy) {
+        case 'createdAt':
+          return b.createdAt.getTime() - a.createdAt.getTime(); // Más reciente primero
         case 'description':
           return a.description.localeCompare(b.description);
         case 'amount':
@@ -614,37 +599,43 @@ export function Payments() {
               {/* Frecuencia / Fecha */}
               <div className="space-y-4">
                 <h3 className="text-base sm:text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
+                  <CalendarIcon className="h-5 w-5" />
                   {formData.paymentType === 'card_payment' ? 'Fecha de Pago' : 'Frecuencia'}
                 </h3>
 
                 {formData.paymentType === 'card_payment' ? (
-                  // Input de fecha para pagos a tarjetas
+                  // DatePicker para pagos a tarjetas
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="paymentDate">Fecha de pago (DD/MM/YYYY) *</Label>
-                      <Input
-                        id="paymentDate"
-                        type="text"
-                        value={dateInput}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setDateInput(value);
-
-                          // Intentar parsear la fecha mientras el usuario escribe
-                          const parsedDate = parseDateDDMMYYYY(value);
-                          if (parsedDate) {
-                            setFormData({ ...formData, paymentDate: parsedDate });
-                          }
-                        }}
-                        onFocus={(e) => setTimeout(() => e.target.select(), 0)}
-                        placeholder="DD/MM/YYYY"
-                        maxLength={10}
-                        required
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Ejemplo: 15/11/2025
-                      </p>
+                      <Label>Fecha de pago *</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={`w-full justify-start text-left font-normal ${
+                              !formData.paymentDate && 'text-muted-foreground'
+                            }`}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {formData.paymentDate
+                              ? formatDateDDMMYYYY(formData.paymentDate)
+                              : 'Selecciona una fecha'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={formData.paymentDate}
+                            onSelect={(date) => {
+                              if (date) {
+                                setFormData({ ...formData, paymentDate: date });
+                              }
+                            }}
+                            locale={es}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </div>
                   </div>
                 ) : (
@@ -740,11 +731,12 @@ export function Payments() {
                 className="pl-9"
               />
             </div>
-            <Select value={sortBy} onValueChange={(value: 'description' | 'amount' | 'type' | 'status') => setSortBy(value)}>
+            <Select value={sortBy} onValueChange={(value: 'createdAt' | 'description' | 'amount' | 'type' | 'status') => setSortBy(value)}>
               <SelectTrigger className="w-full sm:w-56">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="createdAt">Más recientes primero</SelectItem>
                 <SelectItem value="description">Ordenar por nombre</SelectItem>
                 <SelectItem value="amount">Ordenar por monto</SelectItem>
                 <SelectItem value="type">Ordenar por tipo</SelectItem>
