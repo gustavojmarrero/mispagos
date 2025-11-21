@@ -24,12 +24,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge';
 import { CardSkeletonGrid } from '@/components/CardSkeleton';
 import {
-  formatCurrency,
   formatCurrencyInput,
   parseCurrencyInput,
   detectCardType,
   isValidCLABE,
-  getCardIcon,
   formatCardNumber,
   unformatCardNumber,
   formatCLABE,
