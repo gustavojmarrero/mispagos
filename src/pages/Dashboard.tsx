@@ -11,7 +11,6 @@ import {
   getNext7DaysTimeline,
 } from '@/lib/dashboardMetrics';
 import { WeeklyCashFlowCard } from '@/components/WeeklyCashFlowCard';
-import { CardPeriodAnalysisCard } from '@/components/CardPeriodAnalysisCard';
 import { SmartAlertsList } from '@/components/SmartAlertsList';
 import { WeeklyTimeline } from '@/components/WeeklyTimeline';
 import { DateRangeFilter, type DateRange } from '@/components/dashboard/DateRangeFilter';
@@ -188,13 +187,6 @@ export function Dashboard() {
         <motion.div variants={staggerItem}>
           <WeeklyCashFlowCard cashFlow={cashFlow} dateRange={dateRange} />
         </motion.div>
-
-        {/* Análisis de Tarjetas por Período */}
-        {periodContext.showCardPeriods && (
-          <motion.div variants={staggerItem}>
-            <CardPeriodAnalysisCard analyses={cardPeriods} />
-          </motion.div>
-        )}
 
         {/* Timeline de Próximos 7 Días */}
         {periodContext.showTimeline && (
