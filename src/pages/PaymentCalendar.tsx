@@ -244,10 +244,12 @@ export function PaymentCalendar() {
       }
 
       case 'this_month': {
-        // Desde hoy hasta el último día del mes actual
+        // Desde el primer día hasta el último día del mes actual
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        startOfMonth.setHours(0, 0, 0, 0);
         const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         endOfMonth.setHours(23, 59, 59, 999);
-        return { start: today, end: endOfMonth };
+        return { start: startOfMonth, end: endOfMonth };
       }
 
       case 'next_month': {
