@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar, X } from 'lucide-react';
 
-export type DateRangePreset = 'current-month' | 'last-month' | 'last-3-months' | 'last-6-months' | 'custom' | 'all';
+export type DateRangePreset = 'this-week' | 'current-month' | 'last-month' | 'last-3-months' | 'last-6-months' | 'custom' | 'all';
 
 export interface DateRange {
   from: Date | null;
@@ -28,6 +28,16 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
     const now = new Date();
 
     switch (preset) {
+      case 'this-week': {
+        // Desde hoy hasta el próximo lunes inclusive
+        const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const currentDay = now.getDay();
+        const daysUntilMonday = currentDay === 0 ? 1 : currentDay === 1 ? 7 : (8 - currentDay);
+        const to = new Date(now);
+        to.setDate(now.getDate() + daysUntilMonday);
+        to.setHours(23, 59, 59, 999);
+        return { from, to };
+      }
       case 'current-month': {
         const from = new Date(now.getFullYear(), now.getMonth(), 1);
         const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
@@ -110,6 +120,7 @@ export function DateRangeFilter({ value, onChange }: DateRangeFilterProps) {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos los datos</SelectItem>
+                  <SelectItem value="this-week">Esta semana</SelectItem>
                   <SelectItem value="current-month">Mes actual</SelectItem>
                   <SelectItem value="last-month">Mes anterior</SelectItem>
                   <SelectItem value="last-3-months">Últimos 3 meses</SelectItem>
