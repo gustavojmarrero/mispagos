@@ -390,6 +390,13 @@ export function generateSmartAlerts(
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // Helper para convertir cualquier fecha a Date
+  const toDate = (date: any): Date => {
+    if (date instanceof Date) return date;
+    if (date?.toDate) return date.toDate(); // Firestore Timestamp
+    return new Date(date);
+  };
+
   // 1. Alertas de tarjetas sin pago después de corte
   const cardsNeedingPayment = cardPeriods.filter(
     (analysis) =>
@@ -419,10 +426,13 @@ export function generateSmartAlerts(
     });
   });
 
-  // 2. Alertas de pagos vencidos
-  const overdueInstances = instances.filter(
-    (instance) => (instance.status === 'pending' || instance.status === 'partial') && instance.dueDate < today
-  );
+  // 2. Alertas de pagos vencidos (fecha de vencimiento anterior a hoy)
+  const overdueInstances = instances.filter((instance) => {
+    if (instance.status !== 'pending' && instance.status !== 'partial') return false;
+    const dueDate = toDate(instance.dueDate);
+    dueDate.setHours(0, 0, 0, 0);
+    return dueDate < today;
+  });
 
   if (overdueInstances.length > 0) {
     const overdueTotal = overdueInstances.reduce(
@@ -449,17 +459,17 @@ export function generateSmartAlerts(
     });
   }
 
-  // 3. Alertas de pagos urgentes (próximos 1-2 días)
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 2);
-  tomorrow.setHours(23, 59, 59, 999);
+  // 3. Alertas de pagos urgentes (próximos 1-2 días, incluyendo hoy)
+  const twoDaysFromNow = new Date(today);
+  twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
+  twoDaysFromNow.setHours(23, 59, 59, 999);
 
-  const urgentInstances = instances.filter(
-    (instance) =>
-      (instance.status === 'pending' || instance.status === 'partial') &&
-      instance.dueDate >= today &&
-      instance.dueDate <= tomorrow
-  );
+  const urgentInstances = instances.filter((instance) => {
+    if (instance.status !== 'pending' && instance.status !== 'partial') return false;
+    const dueDate = toDate(instance.dueDate);
+    dueDate.setHours(0, 0, 0, 0);
+    return dueDate >= today && dueDate <= twoDaysFromNow;
+  });
 
   if (urgentInstances.length > 0) {
     const urgentTotal = urgentInstances.reduce(
