@@ -19,27 +19,42 @@ export function calculatePaymentCompliance(
 ): PaymentCompliance {
   const now = new Date();
 
+  // Helper para convertir cualquier fecha a Date
+  const toDate = (date: any): Date => {
+    if (date instanceof Date) return date;
+    if (date?.toDate) return date.toDate(); // Firestore Timestamp
+    return new Date(date);
+  };
+
   const periodInstances = instances.filter(instance => {
-    const dueDate = instance.dueDate instanceof Date ? instance.dueDate : new Date(instance.dueDate);
+    const dueDate = toDate(instance.dueDate);
     return dueDate >= startDate && dueDate <= endDate;
   });
 
-  const completedOnTime = periodInstances.filter(i =>
-    i.status === 'paid' && i.paidDate && i.paidDate <= i.dueDate
-  ).length;
+  // Pagos completados a tiempo (status paid y fecha de pago <= fecha de vencimiento)
+  const completedOnTime = periodInstances.filter(i => {
+    if (i.status !== 'paid' || !i.paidDate) return false;
+    const paidDate = toDate(i.paidDate);
+    const dueDate = toDate(i.dueDate);
+    return paidDate <= dueDate;
+  }).length;
+
+  // También contar pagos completados (aunque sea tarde) para el cálculo general
+  const allCompleted = periodInstances.filter(i => i.status === 'paid').length;
 
   const overdue = periodInstances.filter(i => {
-    const dueDate = i.dueDate instanceof Date ? i.dueDate : new Date(i.dueDate);
-    return i.status === 'pending' && dueDate < now;
+    const dueDate = toDate(i.dueDate);
+    return (i.status === 'pending' || i.status === 'partial') && dueDate < now;
   }).length;
 
   const pending = periodInstances.filter(i => {
-    const dueDate = i.dueDate instanceof Date ? i.dueDate : new Date(i.dueDate);
-    return i.status === 'pending' && dueDate >= now;
+    const dueDate = toDate(i.dueDate);
+    return (i.status === 'pending' || i.status === 'partial') && dueDate >= now;
   }).length;
 
   const total = periodInstances.length;
-  const complianceRate = total > 0 ? (completedOnTime / total) * 100 : 0;
+  // Calcular compliance basado en pagos completados (a tiempo o no) vs total
+  const complianceRate = total > 0 ? (allCompleted / total) * 100 : 0;
 
   return {
     completedOnTime,
