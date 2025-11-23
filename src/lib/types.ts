@@ -7,7 +7,7 @@ export interface User {
 }
 
 // Card Types
-export type CardType = "Visa" | "Mastercard" | "Amex" | "Unknown";
+export type CardType = "Visa" | "Mastercard" | "Amex" | "Departamental";
 export type CardOwner = "Guatever" | "Sandra" | "Gustavo";
 
 export interface Card {

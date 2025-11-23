@@ -129,7 +129,7 @@ export function getPaymentStatus(dueDate: Date): 'overdue' | 'upcoming' | 'dista
 /**
  * Detecta el tipo de tarjeta basándose en el número
  */
-export function detectCardType(cardNumber: string): 'Visa' | 'Mastercard' | 'Amex' | 'Unknown' {
+export function detectCardType(cardNumber: string): 'Visa' | 'Mastercard' | 'Amex' | 'Departamental' {
   const cleaned = cardNumber.replace(/\s/g, '');
 
   // Visa: empieza con 4
@@ -141,7 +141,7 @@ export function detectCardType(cardNumber: string): 'Visa' | 'Mastercard' | 'Ame
   // American Express: 34 o 37
   if (/^3[47]/.test(cleaned)) return "Amex";
 
-  return "Unknown";
+  return "Departamental";
 }
 
 /**
@@ -189,12 +189,13 @@ export function isValidCLABE(clabe: string): boolean {
 /**
  * Obtiene la ruta del icono SVG según el tipo de tarjeta
  */
-export function getCardIcon(cardType: 'Visa' | 'Mastercard' | 'Amex' | 'Unknown'): string {
-  const icons = {
+export function getCardIcon(cardType: 'Visa' | 'Mastercard' | 'Amex' | 'Departamental' | 'Unknown'): string {
+  const icons: Record<string, string> = {
     Visa: '/card-icons/visa.svg',
     Mastercard: '/card-icons/mastercard.svg',
     Amex: '/card-icons/amex.svg',
-    Unknown: '/card-icons/unknown.svg',
+    Departamental: '/card-icons/unknown.svg',
+    Unknown: '/card-icons/unknown.svg', // Compatibilidad con datos existentes
   };
-  return icons[cardType];
+  return icons[cardType] || icons.Departamental;
 }

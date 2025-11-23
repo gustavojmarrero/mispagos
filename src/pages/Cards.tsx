@@ -78,7 +78,7 @@ export function Cards() {
     creditLimit: 0,
     currentBalance: 0,
     physicalCardNumber: '',
-    cardType: 'Unknown',
+    cardType: 'Departamental',
     digitalCardNumber: '',
     clabeAccount: '',
     owner: 'Gustavo',
@@ -142,7 +142,7 @@ export function Cards() {
         createdAt: doc.data().createdAt?.toDate() || new Date(),
         updatedAt: doc.data().updatedAt?.toDate() || new Date(),
         // Valores por defecto para campos nuevos
-        cardType: doc.data().cardType || 'Unknown',
+        cardType: doc.data().cardType || 'Departamental',
         owner: doc.data().owner || 'Gustavo',
         bankId: doc.data().bankId || '',
         availableCredit: doc.data().availableCredit || 0,
@@ -328,7 +328,7 @@ export function Cards() {
       creditLimit: 0,
       currentBalance: 0,
       physicalCardNumber: '',
-      cardType: 'Unknown',
+      cardType: 'Departamental',
       digitalCardNumber: '',
       clabeAccount: '',
       owner: 'Gustavo',
@@ -523,7 +523,7 @@ export function Cards() {
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="physicalCardNumber">
                       Número tarjeta física
-                      {formData.cardType !== 'Unknown' && (
+                      {formData.cardType !== 'Departamental' && (
                         <Badge
                           variant={formData.cardType.toLowerCase() as any}
                           className="ml-2"
@@ -553,7 +553,7 @@ export function Cards() {
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="digitalCardNumber">
                       Número tarjeta digital
-                      {!formData.physicalCardNumber && formData.cardType !== 'Unknown' && (
+                      {!formData.physicalCardNumber && formData.cardType !== 'Departamental' && (
                         <Badge
                           variant={formData.cardType.toLowerCase() as any}
                           className="ml-2"
