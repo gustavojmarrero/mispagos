@@ -4,19 +4,13 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Card as CardType, Service, ScheduledPayment, PaymentInstance } from '@/lib/types';
 import {
-  calculateMonthlyObligations,
-  calculatePaymentFlow,
   calculateServicesAnalysis,
   calculateCashProjection,
   calculateCreditSummary,
-  type MonthlyObligations,
-  type PaymentFlow,
   type ServicesAnalysis,
   type CashProjection,
   type CreditSummary,
 } from '@/lib/reportsMetrics';
-import { MonthlyObligationsCard } from '@/components/reports/MonthlyObligationsCard';
-import { PaymentFlowCard } from '@/components/reports/PaymentFlowCard';
 import { ServicesAnalysisCard } from '@/components/reports/ServicesAnalysisCard';
 import { CashProjectionCard } from '@/components/reports/CashProjectionCard';
 import { CreditSummaryCard } from '@/components/reports/CreditSummaryCard';
@@ -42,8 +36,6 @@ export function Reports() {
   });
 
   // Metrics state
-  const [obligations, setObligations] = useState<MonthlyObligations | null>(null);
-  const [paymentFlow, setPaymentFlow] = useState<PaymentFlow | null>(null);
   const [servicesAnalysis, setServicesAnalysis] = useState<ServicesAnalysis | null>(null);
   const [cashProjection, setCashProjection] = useState<CashProjection | null>(null);
   const [creditSummary, setCreditSummary] = useState<CreditSummary | null>(null);
@@ -135,23 +127,6 @@ export function Reports() {
     const startDate = dateRange.from || new Date(2000, 0, 1);
     const endDate = dateRange.to || new Date(2099, 11, 31);
 
-    // Monthly Obligations
-    const obligationsData = calculateMonthlyObligations(
-      instances,
-      scheduledPayments,
-      startDate,
-      endDate
-    );
-    setObligations(obligationsData);
-
-    // Payment Flow
-    const flowData = calculatePaymentFlow(
-      instances,
-      startDate,
-      endDate
-    );
-    setPaymentFlow(flowData);
-
     // Services Analysis
     const servicesData = calculateServicesAnalysis(
       instances,
@@ -201,12 +176,6 @@ export function Reports() {
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Credit Summary */}
         {creditSummary && <CreditSummaryCard data={creditSummary} />}
-
-        {/* Monthly Obligations */}
-        {obligations && <MonthlyObligationsCard data={obligations} />}
-
-        {/* Payment Flow */}
-        {paymentFlow && <PaymentFlowCard data={paymentFlow} />}
 
         {/* Services Analysis */}
         {servicesAnalysis && <ServicesAnalysisCard data={servicesAnalysis} />}
