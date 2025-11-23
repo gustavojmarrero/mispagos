@@ -62,6 +62,7 @@ import {
   Banknote,
   Search,
   Loader2,
+  Info,
 } from 'lucide-react';
 
 const DAYS_OF_WEEK = [
@@ -669,6 +670,20 @@ export function Payments() {
                         <p className="text-xs text-muted-foreground">
                           Primero agrega tarjetas en la sección "Tarjetas"
                         </p>
+                      )}
+                      {/* Mostrar comentarios de la tarjeta seleccionada como referencia */}
+                      {formData.cardId && cards.find(c => c.id === formData.cardId)?.comments && (
+                        <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-md">
+                          <div className="flex items-start gap-2">
+                            <Info className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-xs font-medium text-blue-700 mb-1">Referencia de la tarjeta:</p>
+                              <p className="text-sm text-blue-800 whitespace-pre-wrap">
+                                {cards.find(c => c.id === formData.cardId)?.comments}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
                       )}
                     </div>
                   ) : (

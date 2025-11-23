@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { InputWithCopy } from '@/components/ui/input-with-copy';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -44,6 +45,7 @@ import {
   User,
   Search,
   Loader2,
+  MessageSquare,
 } from 'lucide-react';
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { Pagination } from '@/components/ui/pagination';
@@ -82,6 +84,7 @@ export function Cards() {
     owner: 'Gustavo',
     bankId: '',
     availableCredit: 0,
+    comments: '',
   });
 
   // Estados para valores de entrada sin formato (mientras el usuario escribe)
@@ -298,6 +301,7 @@ export function Cards() {
       owner: card.owner,
       bankId: card.bankId,
       availableCredit: card.availableCredit,
+      comments: card.comments || '',
     });
     setShowForm(true);
   };
@@ -330,6 +334,7 @@ export function Cards() {
       owner: 'Gustavo',
       bankId: '',
       availableCredit: 0,
+      comments: '',
     });
     setEditingCard(null);
     setShowForm(false);
@@ -732,6 +737,24 @@ export function Cards() {
                 </div>
               </div>
 
+              {/* Sección 4: Comentarios */}
+              <div className="space-y-4">
+                <h3 className="text-base sm:text-lg font-semibold border-b pb-2 text-primary flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Comentarios
+                </h3>
+                <div className="space-y-2">
+                  <Label htmlFor="comments">Notas o comentarios</Label>
+                  <Textarea
+                    id="comments"
+                    value={formData.comments || ''}
+                    onChange={(e) => setFormData({ ...formData, comments: e.target.value })}
+                    placeholder="Información adicional sobre la tarjeta (ej: datos de pago, referencias, etc.)"
+                    rows={3}
+                  />
+                </div>
+              </div>
+
               <div className="flex flex-col sm:flex-row justify-end gap-2">
                 <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto" disabled={saving}>
                   Cancelar
@@ -965,6 +988,16 @@ export function Cards() {
                     </div>
                   </div>
                 </div>
+
+                {/* Comentarios */}
+                {viewingCard.comments && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-muted-foreground">Comentarios</h4>
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <p className="text-sm whitespace-pre-wrap">{viewingCard.comments}</p>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <SheetFooter className="mt-6">

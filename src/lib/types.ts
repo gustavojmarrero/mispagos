@@ -34,6 +34,7 @@ export interface Card {
   owner: CardOwner;
   bankId: string;
   availableCredit: number;
+  comments?: string; // Comentarios de texto libre
 }
 
 export interface CardFormData {
@@ -51,6 +52,7 @@ export interface CardFormData {
   owner: CardOwner;
   bankId: string;
   availableCredit: number;
+  comments?: string;
 }
 
 // Bank Types
