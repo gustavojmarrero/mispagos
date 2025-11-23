@@ -46,6 +46,7 @@ import {
   Search,
   Loader2,
   MessageSquare,
+  Copy,
 } from 'lucide-react';
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { Pagination } from '@/components/ui/pagination';
@@ -936,19 +937,58 @@ export function Cards() {
                       {viewingCard.physicalCardNumber && (
                         <div className="bg-muted/50 p-3 rounded-lg">
                           <p className="text-xs text-muted-foreground mb-1">Tarjeta Física</p>
-                          <p className="font-mono text-sm">{formatCardNumber(viewingCard.physicalCardNumber)}</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-mono text-sm">{formatCardNumber(viewingCard.physicalCardNumber)}</p>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                navigator.clipboard.writeText(viewingCard.physicalCardNumber || '');
+                                toast.success('Número de tarjeta física copiado');
+                              }}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       )}
                       {viewingCard.digitalCardNumber && (
                         <div className="bg-muted/50 p-3 rounded-lg">
                           <p className="text-xs text-muted-foreground mb-1">Tarjeta Digital</p>
-                          <p className="font-mono text-sm">{formatCardNumber(viewingCard.digitalCardNumber)}</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-mono text-sm">{formatCardNumber(viewingCard.digitalCardNumber)}</p>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                navigator.clipboard.writeText(viewingCard.digitalCardNumber || '');
+                                toast.success('Número de tarjeta digital copiado');
+                              }}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       )}
                       {viewingCard.clabeAccount && (
                         <div className="bg-muted/50 p-3 rounded-lg">
                           <p className="text-xs text-muted-foreground mb-1">CLABE</p>
-                          <p className="font-mono text-sm">{formatCLABE(viewingCard.clabeAccount)}</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-mono text-sm">{formatCLABE(viewingCard.clabeAccount)}</p>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                navigator.clipboard.writeText(viewingCard.clabeAccount || '');
+                                toast.success('CLABE copiada');
+                              }}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       )}
                     </div>
