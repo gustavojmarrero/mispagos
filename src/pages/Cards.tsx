@@ -155,14 +155,41 @@ export function Cards() {
 
   const handleCardNumberChange = (value: string) => {
     const cleaned = unformatCardNumber(value);
-    const cardType = detectCardType(cleaned);
-    const lastDigits = cleaned.slice(-4);
+    const digitalCleaned = unformatCardNumber(formData.digitalCardNumber || '');
+
+    let cardType = formData.cardType;
+    let lastDigits = formData.lastDigits;
+
+    if (cleaned.length >= 4) {
+      // Si hay número físico, usarlo para detectar tipo y últimos dígitos
+      cardType = detectCardType(cleaned);
+      lastDigits = cleaned.slice(-4);
+    } else if (digitalCleaned.length >= 4) {
+      // Si no hay físico pero sí digital, usar digital
+      cardType = detectCardType(digitalCleaned);
+      lastDigits = digitalCleaned.slice(-4);
+    }
 
     setFormData({
       ...formData,
       physicalCardNumber: value,
       cardType,
-      lastDigits: lastDigits || formData.lastDigits,
+      lastDigits,
+    });
+  };
+
+  const handleDigitalCardNumberChange = (value: string) => {
+    const cleaned = unformatCardNumber(value);
+    const physicalCleaned = unformatCardNumber(formData.physicalCardNumber || '');
+
+    // Solo usar digital para tipo y lastDigits si NO hay tarjeta física
+    const shouldUseDigital = physicalCleaned.length < 4 && cleaned.length >= 4;
+
+    setFormData({
+      ...formData,
+      digitalCardNumber: value,
+      cardType: shouldUseDigital ? detectCardType(cleaned) : formData.cardType,
+      lastDigits: shouldUseDigital ? cleaned.slice(-4) : formData.lastDigits,
     });
   };
 
@@ -503,11 +530,21 @@ export function Cards() {
                   </div>
 
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="digitalCardNumber">Número tarjeta digital</Label>
+                    <Label htmlFor="digitalCardNumber">
+                      Número tarjeta digital
+                      {!formData.physicalCardNumber && formData.cardType !== 'Unknown' && (
+                        <Badge
+                          variant={formData.cardType.toLowerCase() as any}
+                          className="ml-2"
+                        >
+                          {formData.cardType}
+                        </Badge>
+                      )}
+                    </Label>
                     <InputWithCopy
                       id="digitalCardNumber"
                       value={formData.digitalCardNumber || ''}
-                      onChange={(value) => setFormData({ ...formData, digitalCardNumber: value })}
+                      onChange={handleDigitalCardNumberChange}
                       placeholder="1234 5678 9012 3456"
                       icon={Smartphone}
                       maxLength={19}
