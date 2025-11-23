@@ -3,6 +3,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServices } from '@/hooks/useServices';
+import { useBanks } from '@/hooks/useBanks';
 import type { Card as CardType, PaymentInstance, ScheduledPayment } from '@/lib/types';
 import {
   calculateWeeklyCashFlow,
@@ -20,6 +21,7 @@ import { staggerContainer, staggerItem } from '@/utils/animations';
 export function Dashboard() {
   const { currentUser } = useAuth();
   const { services } = useServices();
+  const { banks } = useBanks();
   const [cards, setCards] = useState<CardType[]>([]);
   const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
@@ -119,9 +121,10 @@ export function Dashboard() {
         filteredPaymentInstances,
         scheduledPayments,
         cardPeriods,
-        cashFlow
+        cashFlow,
+        banks
       ),
-    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow]
+    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow, banks]
   );
 
   const timeline = useMemo(

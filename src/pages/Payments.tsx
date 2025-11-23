@@ -397,6 +397,17 @@ export function Payments() {
     return card?.name || 'Tarjeta no encontrada';
   };
 
+  const getCardLastDigits = (card: CardType): string => {
+    // Priorizar tarjeta física, luego digital
+    if (card.physicalCardNumber && card.physicalCardNumber.length >= 4) {
+      return card.physicalCardNumber.slice(-4);
+    }
+    if (card.digitalCardNumber && card.digitalCardNumber.length >= 4) {
+      return card.digitalCardNumber.slice(-4);
+    }
+    return card.lastDigits || '****';
+  };
+
   const getServiceName = (serviceId: string) => {
     const service = services.find((s) => s.id === serviceId);
     return service?.name || 'Servicio no encontrado';
@@ -644,7 +655,7 @@ export function Payments() {
                         <SelectContent>
                           {cards.map((card) => (
                             <SelectItem key={card.id} value={card.id}>
-                              {card.name} - {formatCurrency(card.currentBalance)}
+                              {card.name} - *{getCardLastDigits(card)}
                             </SelectItem>
                           ))}
                         </SelectContent>

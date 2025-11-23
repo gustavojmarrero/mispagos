@@ -384,11 +384,18 @@ export function generateSmartAlerts(
   instances: PaymentInstance[],
   _scheduled: ScheduledPayment[],
   cardPeriods: CardPeriodAnalysis[],
-  cashFlow: WeeklyCashFlow
+  cashFlow: WeeklyCashFlow,
+  banks: { id: string; name: string }[] = []
 ): SmartAlert[] {
   const alerts: SmartAlert[] = [];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  // Helper para obtener nombre del banco
+  const getBankName = (bankId: string) => {
+    const bank = banks.find((b) => b.id === bankId);
+    return bank?.name || '';
+  };
 
   // Helper para convertir cualquier fecha a Date
   const toDate = (date: any): Date => {
@@ -414,7 +421,7 @@ export function generateSmartAlerts(
       id: `card-no-payment-${analysis.card.id}`,
       type: 'card_no_payment',
       severity: 'critical',
-      title: 'Tarjeta sin pago programado',
+      title: `Tarjeta ${getBankName(analysis.card.bankId)} sin pago programado`,
       description: `${analysis.card.name} cortó hace ${daysAfterClosing} día${daysAfterClosing !== 1 ? 's' : ''} y no tiene pago programado`,
       action: {
         label: 'Programar pago',
