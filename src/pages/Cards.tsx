@@ -268,15 +268,31 @@ export function Cards() {
 
   const handleEdit = (card: CardType) => {
     setEditingCard(card);
+
+    // Recalcular cardType si es Unknown o si hay números de tarjeta
+    let cardType = card.cardType;
+    let lastDigits = card.lastDigits;
+
+    const physicalCleaned = card.physicalCardNumber || '';
+    const digitalCleaned = card.digitalCardNumber || '';
+
+    if (physicalCleaned.length >= 4) {
+      cardType = detectCardType(physicalCleaned);
+      lastDigits = physicalCleaned.slice(-4);
+    } else if (digitalCleaned.length >= 4) {
+      cardType = detectCardType(digitalCleaned);
+      lastDigits = digitalCleaned.slice(-4);
+    }
+
     setFormData({
       name: card.name,
-      lastDigits: card.lastDigits,
+      lastDigits,
       closingDay: card.closingDay,
       dueDay: card.dueDay,
       creditLimit: card.creditLimit,
       currentBalance: card.currentBalance,
       physicalCardNumber: card.physicalCardNumber || '',
-      cardType: card.cardType,
+      cardType,
       digitalCardNumber: card.digitalCardNumber || '',
       clabeAccount: card.clabeAccount || '',
       owner: card.owner,
