@@ -7,14 +7,12 @@ import {
   calculatePaymentCompliance,
   calculateMonthlyObligations,
   calculatePaymentFlow,
-  calculateCardHealth,
   calculateServicesAnalysis,
   calculateCashProjection,
   calculateCreditSummary,
   type PaymentCompliance,
   type MonthlyObligations,
   type PaymentFlow,
-  type CardHealth,
   type ServicesAnalysis,
   type CashProjection,
   type CreditSummary,
@@ -22,7 +20,6 @@ import {
 import { PaymentComplianceCard } from '@/components/reports/PaymentComplianceCard';
 import { MonthlyObligationsCard } from '@/components/reports/MonthlyObligationsCard';
 import { PaymentFlowCard } from '@/components/reports/PaymentFlowCard';
-import { CardHealthCard } from '@/components/reports/CardHealthCard';
 import { ServicesAnalysisCard } from '@/components/reports/ServicesAnalysisCard';
 import { CashProjectionCard } from '@/components/reports/CashProjectionCard';
 import { CreditSummaryCard } from '@/components/reports/CreditSummaryCard';
@@ -51,7 +48,6 @@ export function Reports() {
   const [compliance, setCompliance] = useState<PaymentCompliance | null>(null);
   const [obligations, setObligations] = useState<MonthlyObligations | null>(null);
   const [paymentFlow, setPaymentFlow] = useState<PaymentFlow | null>(null);
-  const [cardHealth, setCardHealth] = useState<CardHealth[]>([]);
   const [servicesAnalysis, setServicesAnalysis] = useState<ServicesAnalysis | null>(null);
   const [cashProjection, setCashProjection] = useState<CashProjection | null>(null);
   const [creditSummary, setCreditSummary] = useState<CreditSummary | null>(null);
@@ -168,14 +164,6 @@ export function Reports() {
     );
     setPaymentFlow(flowData);
 
-    // Card Health
-    const healthData = calculateCardHealth(
-      cards,
-      instances,
-      scheduledPayments
-    );
-    setCardHealth(healthData);
-
     // Services Analysis
     const servicesData = calculateServicesAnalysis(
       instances,
@@ -232,8 +220,6 @@ export function Reports() {
         {/* Payment Flow */}
         {paymentFlow && <PaymentFlowCard data={paymentFlow} />}
 
-        {/* Card Health */}
-        <CardHealthCard data={cardHealth} />
 
         {/* Services Analysis */}
         {servicesAnalysis && <ServicesAnalysisCard data={servicesAnalysis} />}
