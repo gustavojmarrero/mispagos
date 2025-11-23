@@ -256,6 +256,12 @@ export function calculateWeeklyCashFlow(
 }
 
 /**
+ * Tolerancia en días para considerar un pago como válido para una tarjeta.
+ * Permite pagos programados hasta X días antes/después de la fecha de vencimiento.
+ */
+const PAYMENT_TOLERANCE_DAYS = 5;
+
+/**
  * Calcula la fecha de corte para una tarjeta en un mes específico
  */
 function getClosingDate(card: Card, referenceDate: Date): Date {
@@ -315,13 +321,18 @@ export function analyzeCardPeriods(
       (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    // Buscar pagos programados para esta tarjeta en el período
+    // Calcular fechas con tolerancia para matching de pagos
+    const toleranceMs = PAYMENT_TOLERANCE_DAYS * 24 * 60 * 60 * 1000;
+    const closingWithTolerance = new Date(closingDate.getTime() - toleranceMs);
+    const dueWithTolerance = new Date(dueDate.getTime() + toleranceMs);
+
+    // Buscar pagos programados para esta tarjeta en el período (con tolerancia ±5 días)
     const cardInstances = instances.filter(
       (instance) =>
         instance.cardId === card.id &&
         instance.paymentType === 'card_payment' &&
-        instance.dueDate >= closingDate &&
-        instance.dueDate <= dueDate
+        instance.dueDate >= closingWithTolerance &&
+        instance.dueDate <= dueWithTolerance
     );
 
     const cardScheduled = scheduled.filter(
@@ -330,8 +341,8 @@ export function analyzeCardPeriods(
         s.paymentType === 'card_payment' &&
         s.isActive === true &&
         s.paymentDate &&
-        s.paymentDate >= closingDate &&
-        s.paymentDate <= dueDate
+        s.paymentDate >= closingWithTolerance &&
+        s.paymentDate <= dueWithTolerance
     );
 
     const hasProgrammedPayment =
