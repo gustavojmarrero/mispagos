@@ -25,7 +25,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Service, ServiceFormData, PaymentMethod } from '@/lib/types';
-import { Store, Edit, Trash2, Plus, X, CreditCard, Banknote, Search, Loader2 } from 'lucide-react';
+import { Store, Plus, X, Search, Loader2, CreditCard, Banknote, Edit } from 'lucide-react';
+import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
+import { ServiceGridItem } from '@/components/services/ServiceGridItem';
+import { ServiceListItem } from '@/components/services/ServiceListItem';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
 
 export function Services() {
   const { currentUser } = useAuth();
@@ -34,8 +45,13 @@ export function Services() {
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
+  const [viewingService, setViewingService] = useState<Service | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'method'>('name');
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const saved = localStorage.getItem('services-view-mode');
+    return (saved as ViewMode) || 'list';
+  });
   const [formData, setFormData] = useState<ServiceFormData>({
     name: '',
     paymentMethod: 'transfer',
@@ -110,6 +126,17 @@ export function Services() {
     }
   };
 
+  const handleView = (service: Service) => {
+    setViewingService(service);
+  };
+
+  const handleEditFromView = () => {
+    if (viewingService) {
+      setViewingService(null);
+      handleEdit(viewingService);
+    }
+  };
+
   const handleEdit = (service: Service) => {
     setEditingService(service);
     setFormData({
@@ -141,12 +168,9 @@ export function Services() {
     setShowForm(false);
   };
 
-  const getPaymentMethodLabel = (method: PaymentMethod) => {
-    return method === 'card' ? 'Tarjeta' : 'Transferencia';
-  };
-
-  const getPaymentMethodIcon = (method: PaymentMethod) => {
-    return method === 'card' ? CreditCard : Banknote;
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    localStorage.setItem('services-view-mode', mode);
   };
 
   // Filter and sort services
@@ -280,6 +304,7 @@ export function Services() {
                 <SelectItem value="method">Ordenar por método</SelectItem>
               </SelectContent>
             </Select>
+            <ViewToggle value={viewMode} onChange={handleViewModeChange} />
           </div>
           {searchTerm && (
             <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
@@ -299,65 +324,55 @@ export function Services() {
         </CardContent>
       </Card>
 
-      {/* Services List */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {filteredAndSortedServices.length === 0 ? (
-          <Card className="col-span-full">
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Store className="h-12 w-12 text-muted-foreground mb-4" />
-              {services.length === 0 ? (
-                <>
-                  <p className="text-muted-foreground">No hay servicios registrados</p>
-                  <p className="text-sm text-muted-foreground">Haz clic en "Nuevo Servicio" para agregar uno</p>
-                </>
-              ) : (
-                <>
-                  <p className="text-muted-foreground">No se encontraron servicios</p>
-                  <p className="text-sm text-muted-foreground">Intenta con otros términos de búsqueda</p>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          filteredAndSortedServices.map((service) => {
-            const PaymentIcon = getPaymentMethodIcon(service.paymentMethod);
-            return (
-              <Card
-                key={service.id}
-                className="relative hover:shadow-lg transition-all duration-300 sm:hover:scale-[1.02] border-border"
-              >
-                <CardHeader className="pb-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Store className="h-5 w-5 text-primary flex-shrink-0" />
-                        <CardTitle className="text-base sm:text-lg font-bold break-words">{service.name}</CardTitle>
-                      </div>
-                      <CardDescription className="flex items-center gap-2 mt-2 text-sm">
-                        <PaymentIcon className="h-4 w-4" />
-                        <span>{getPaymentMethodLabel(service.paymentMethod)}</span>
-                      </CardDescription>
-                    </div>
-                  </div>
-                </CardHeader>
+      {/* Empty State */}
+      {filteredAndSortedServices.length === 0 && (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <Store className="h-12 w-12 text-muted-foreground mb-4" />
+            {services.length === 0 ? (
+              <>
+                <p className="text-muted-foreground">No hay servicios registrados</p>
+                <p className="text-sm text-muted-foreground">Haz clic en "Nuevo Servicio" para agregar uno</p>
+              </>
+            ) : (
+              <>
+                <p className="text-muted-foreground">No se encontraron servicios</p>
+                <p className="text-sm text-muted-foreground">Intenta con otros términos de búsqueda</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
-                <CardContent>
-                  <div className="flex flex-col sm:flex-row justify-end gap-2">
-                    <Button variant="ghost" size="sm" onClick={() => handleEdit(service)} className="w-full sm:w-auto min-h-[44px]">
-                      <Edit className="h-4 w-4 mr-1" />
-                      Editar
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleDelete(service.id)} className="w-full sm:w-auto min-h-[44px]">
-                      <Trash2 className="h-4 w-4 mr-1 text-destructive" />
-                      Eliminar
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
-        )}
-      </div>
+      {/* Vista Grid */}
+      {filteredAndSortedServices.length > 0 && viewMode === 'grid' && (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredAndSortedServices.map((service) => (
+            <ServiceGridItem
+              key={service.id}
+              service={service}
+              onView={handleView}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Vista Lista */}
+      {filteredAndSortedServices.length > 0 && viewMode === 'list' && (
+        <div className="space-y-2">
+          {filteredAndSortedServices.map((service) => (
+            <ServiceListItem
+              key={service.id}
+              service={service}
+              onView={handleView}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Botón flotante fijo - Solo en móvil */}
       <Button
@@ -367,6 +382,78 @@ export function Services() {
       >
         {showForm ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
       </Button>
+
+      {/* Sheet para ver detalles del servicio */}
+      <Sheet open={!!viewingService} onOpenChange={() => setViewingService(null)}>
+        <SheetContent className="w-full sm:max-w-md">
+          {viewingService && (
+            <>
+              <SheetHeader className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-primary/10 p-3 rounded-lg">
+                    <Store className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <SheetTitle className="text-lg">{viewingService.name}</SheetTitle>
+                    <SheetDescription>Detalles del servicio</SheetDescription>
+                  </div>
+                </div>
+              </SheetHeader>
+
+              <div className="space-y-6 py-6">
+                {/* Método de pago */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground">Método de Pago</h4>
+                  <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+                    {viewingService.paymentMethod === 'card' ? (
+                      <CreditCard className="h-5 w-5 text-blue-600" />
+                    ) : (
+                      <Banknote className="h-5 w-5 text-green-600" />
+                    )}
+                    <span className="font-medium">
+                      {viewingService.paymentMethod === 'card' ? 'Tarjeta de Crédito' : 'Transferencia/Efectivo'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Información de creación */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground">Información</h4>
+                  <div className="grid gap-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Creado por</span>
+                      <span className="font-medium">{viewingService.createdByName}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-muted-foreground">Fecha de creación</span>
+                      <span className="font-medium">
+                        {viewingService.createdAt.toLocaleDateString('es-MX', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    </div>
+                    {viewingService.updatedByName !== viewingService.createdByName && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Última modificación</span>
+                        <span className="font-medium">{viewingService.updatedByName}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <SheetFooter>
+                <Button onClick={handleEditFromView} className="w-full">
+                  <Edit className="h-4 w-4 mr-2" />
+                  Editar Servicio
+                </Button>
+              </SheetFooter>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
