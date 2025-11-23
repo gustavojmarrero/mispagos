@@ -408,6 +408,11 @@ export function Payments() {
     return card.lastDigits || '****';
   };
 
+  const getBankName = (bankId: string): string => {
+    const bank = banks.find((b) => b.id === bankId);
+    return bank?.name || '';
+  };
+
   const getServiceName = (serviceId: string) => {
     const service = services.find((s) => s.id === serviceId);
     return service?.name || 'Servicio no encontrado';
@@ -655,7 +660,7 @@ export function Payments() {
                         <SelectContent>
                           {cards.map((card) => (
                             <SelectItem key={card.id} value={card.id}>
-                              {card.name} - *{getCardLastDigits(card)}
+                              {getBankName(card.bankId)} - {card.name} - *{getCardLastDigits(card)}
                             </SelectItem>
                           ))}
                         </SelectContent>
