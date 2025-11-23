@@ -352,13 +352,23 @@ export function calculateCashProjection(
 
   const total = upcomingInstances.reduce((sum, instance) => sum + instance.amount, 0);
 
-  // Dividir en semanas
+  // Dividir en semanas (martes a lunes)
   const weeks: WeeklyProjection[] = [];
+
+  // Calcular el martes de la semana actual
+  const dayOfWeek = now.getDay(); // 0=dom, 1=lun, 2=mar, 3=mié, 4=jue, 5=vie, 6=sáb
+  const daysFromTuesday = (dayOfWeek - 2 + 7) % 7; // Días transcurridos desde el martes
+
+  const baseWeekStart = new Date(now);
+  baseWeekStart.setDate(now.getDate() - daysFromTuesday);
+  baseWeekStart.setHours(0, 0, 0, 0);
+
   for (let i = 0; i < 4; i++) {
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() + (i * 7));
+    const weekStart = new Date(baseWeekStart);
+    weekStart.setDate(baseWeekStart.getDate() + (i * 7));
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
 
     const weekInstances = upcomingInstances.filter(instance => {
       const dueDate = instance.dueDate instanceof Date ? instance.dueDate : new Date(instance.dueDate);
