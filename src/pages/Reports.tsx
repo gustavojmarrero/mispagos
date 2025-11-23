@@ -199,6 +199,8 @@ export function Reports() {
 
       {/* Metrics Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {/* Credit Summary */}
+        {creditSummary && <CreditSummaryCard data={creditSummary} />}
 
         {/* Monthly Obligations */}
         {obligations && <MonthlyObligationsCard data={obligations} />}
@@ -206,15 +208,11 @@ export function Reports() {
         {/* Payment Flow */}
         {paymentFlow && <PaymentFlowCard data={paymentFlow} />}
 
-
         {/* Services Analysis */}
         {servicesAnalysis && <ServicesAnalysisCard data={servicesAnalysis} />}
 
         {/* Cash Projection */}
         {cashProjection && <CashProjectionCard data={cashProjection} />}
-
-        {/* Credit Summary */}
-        {creditSummary && <CreditSummaryCard data={creditSummary} />}
       </div>
     </div>
   );
