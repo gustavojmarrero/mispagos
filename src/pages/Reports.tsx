@@ -4,20 +4,17 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Card as CardType, Service, ScheduledPayment, PaymentInstance } from '@/lib/types';
 import {
-  calculatePaymentCompliance,
   calculateMonthlyObligations,
   calculatePaymentFlow,
   calculateServicesAnalysis,
   calculateCashProjection,
   calculateCreditSummary,
-  type PaymentCompliance,
   type MonthlyObligations,
   type PaymentFlow,
   type ServicesAnalysis,
   type CashProjection,
   type CreditSummary,
 } from '@/lib/reportsMetrics';
-import { PaymentComplianceCard } from '@/components/reports/PaymentComplianceCard';
 import { MonthlyObligationsCard } from '@/components/reports/MonthlyObligationsCard';
 import { PaymentFlowCard } from '@/components/reports/PaymentFlowCard';
 import { ServicesAnalysisCard } from '@/components/reports/ServicesAnalysisCard';
@@ -45,7 +42,6 @@ export function Reports() {
   });
 
   // Metrics state
-  const [compliance, setCompliance] = useState<PaymentCompliance | null>(null);
   const [obligations, setObligations] = useState<MonthlyObligations | null>(null);
   const [paymentFlow, setPaymentFlow] = useState<PaymentFlow | null>(null);
   const [servicesAnalysis, setServicesAnalysis] = useState<ServicesAnalysis | null>(null);
@@ -139,14 +135,6 @@ export function Reports() {
     const startDate = dateRange.from || new Date(2000, 0, 1);
     const endDate = dateRange.to || new Date(2099, 11, 31);
 
-    // Payment Compliance
-    const complianceData = calculatePaymentCompliance(
-      instances,
-      startDate,
-      endDate
-    );
-    setCompliance(complianceData);
-
     // Monthly Obligations
     const obligationsData = calculateMonthlyObligations(
       instances,
@@ -211,8 +199,6 @@ export function Reports() {
 
       {/* Metrics Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* Payment Compliance */}
-        {compliance && <PaymentComplianceCard data={compliance} />}
 
         {/* Monthly Obligations */}
         {obligations && <MonthlyObligationsCard data={obligations} />}
