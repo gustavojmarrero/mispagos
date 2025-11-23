@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   collection,
   query,
@@ -22,6 +22,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { es } from 'date-fns/locale';
@@ -82,7 +92,9 @@ const getOrdinal = (num: number): string => {
 export function Payments() {
   const { currentUser } = useAuth();
   const { services } = useServices();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [returnToDashboard, setReturnToDashboard] = useState(false);
   const [payments, setPayments] = useState<ScheduledPayment[]>([]);
   const [cards, setCards] = useState<CardType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +117,7 @@ export function Payments() {
 
   const [amountInput, setAmountInput] = useState('');
   const [isEditingAmount, setIsEditingAmount] = useState(false);
+  const [duplicatePayment, setDuplicatePayment] = useState<ScheduledPayment | null>(null);
 
   useEffect(() => {
     fetchPayments();
@@ -114,9 +127,14 @@ export function Payments() {
   // Preseleccionar tarjeta si viene cardId en la URL (desde Dashboard)
   useEffect(() => {
     const cardIdFromUrl = searchParams.get('cardId');
+    const fromDashboard = searchParams.get('from') === 'dashboard';
     if (cardIdFromUrl && cards.length > 0 && !loading) {
       const cardExists = cards.some(c => c.id === cardIdFromUrl);
       if (cardExists) {
+        // Guardar si viene del dashboard para regresar después
+        if (fromDashboard) {
+          setReturnToDashboard(true);
+        }
         // Abrir formulario y preseleccionar tarjeta
         setShowForm(true);
         setFormData(prev => ({
@@ -201,6 +219,19 @@ export function Payments() {
       return;
     }
 
+    // Validar duplicados para pagos de tarjeta
+    if (formData.paymentType === 'card_payment' && formData.cardId && formData.paymentDate) {
+      const duplicate = findDuplicateCardPayment(
+        formData.cardId,
+        formData.paymentDate,
+        editingPayment?.id
+      );
+      if (duplicate) {
+        setDuplicatePayment(duplicate);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       // Auto-generar descripción para pagos a tarjetas
@@ -274,6 +305,14 @@ export function Payments() {
       }
 
       resetForm();
+
+      // Si vino del dashboard, regresar
+      if (returnToDashboard) {
+        setReturnToDashboard(false);
+        navigate('/');
+        return;
+      }
+
       await fetchPayments();
     } catch (error) {
       console.error('[Payments] Error saving payment:', error);
@@ -377,6 +416,70 @@ export function Payments() {
       return `Mensual (día ${payment.dueDay})`;
     }
     return `Único (día ${payment.dueDay})`;
+  };
+
+  // Función para encontrar pago duplicado en el mismo período de corte
+  const findDuplicateCardPayment = (cardId: string, paymentDate: Date, excludePaymentId?: string): ScheduledPayment | null => {
+    const card = cards.find(c => c.id === cardId);
+    if (!card) return null;
+
+    const { closingDay, dueDay } = card;
+
+    // Calcular el período de corte al que pertenece paymentDate
+    // El período va desde closingDay del mes hasta dueDay (que puede ser del mes siguiente)
+    const paymentDay = paymentDate.getDate();
+    const paymentMonth = paymentDate.getMonth();
+    const paymentYear = paymentDate.getFullYear();
+
+    let periodClosingDate: Date;
+    let periodDueDate: Date;
+
+    if (dueDay <= closingDay) {
+      // El período cruza meses (ej: corte 10, pago 2)
+      // Si paymentDay está entre 1 y dueDay, el período empezó el mes anterior
+      // Si paymentDay está entre closingDay+1 y fin de mes, el período termina el mes siguiente
+      if (paymentDay <= dueDay) {
+        // Estamos en la parte final del período (mes siguiente al corte)
+        periodClosingDate = new Date(paymentYear, paymentMonth - 1, closingDay);
+        periodDueDate = new Date(paymentYear, paymentMonth, dueDay);
+      } else if (paymentDay > closingDay) {
+        // Estamos en la parte inicial del período (después del corte)
+        periodClosingDate = new Date(paymentYear, paymentMonth, closingDay);
+        periodDueDate = new Date(paymentYear, paymentMonth + 1, dueDay);
+      } else {
+        // Entre dueDay+1 y closingDay - no es un período válido para pago
+        return null;
+      }
+    } else {
+      // El período está en el mismo mes (ej: corte 5, pago 20)
+      if (paymentDay > closingDay && paymentDay <= dueDay) {
+        periodClosingDate = new Date(paymentYear, paymentMonth, closingDay);
+        periodDueDate = new Date(paymentYear, paymentMonth, dueDay);
+      } else if (paymentDay <= closingDay) {
+        // Período del mes anterior
+        periodClosingDate = new Date(paymentYear, paymentMonth - 1, closingDay);
+        periodDueDate = new Date(paymentYear, paymentMonth - 1, dueDay);
+      } else {
+        // Período del mes siguiente
+        periodClosingDate = new Date(paymentYear, paymentMonth, closingDay);
+        periodDueDate = new Date(paymentYear, paymentMonth, dueDay);
+      }
+    }
+
+    // Buscar pagos existentes para esta tarjeta en el mismo período
+    const duplicate = payments.find(p => {
+      if (p.id === excludePaymentId) return false;
+      if (p.paymentType !== 'card_payment') return false;
+      if (p.cardId !== cardId) return false;
+      if (!p.paymentDate || !p.isActive) return false;
+
+      const existingPaymentDate = p.paymentDate instanceof Date ? p.paymentDate : new Date(p.paymentDate);
+
+      // Verificar si el pago existente cae en el mismo período
+      return existingPaymentDate > periodClosingDate && existingPaymentDate <= periodDueDate;
+    });
+
+    return duplicate || null;
   };
 
   const generateCardPaymentDescription = (cardId: string, paymentDate: Date): string => {
@@ -588,7 +691,7 @@ export function Payments() {
                           setIsEditingAmount(false);
                         }}
                         placeholder="0.00"
-                        className="pl-7"
+                        className="pl-7 h-12 text-lg font-semibold bg-muted/60"
                         required
                       />
                     </div>
@@ -895,6 +998,51 @@ export function Payments() {
       >
         {showForm ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
       </Button>
+
+      {/* Modal de pago duplicado */}
+      <AlertDialog open={!!duplicatePayment} onOpenChange={() => setDuplicatePayment(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Pago ya programado</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Ya existe un pago programado para esta tarjeta en el mismo período de corte:
+                </p>
+                {duplicatePayment && (
+                  <div className="bg-muted p-3 rounded-md space-y-1">
+                    <p className="font-medium">{duplicatePayment.description}</p>
+                    <p className="text-sm">
+                      Monto: {formatCurrency(duplicatePayment.amount)}
+                    </p>
+                    {duplicatePayment.paymentDate && (
+                      <p className="text-sm">
+                        Fecha: {(duplicatePayment.paymentDate instanceof Date
+                          ? duplicatePayment.paymentDate
+                          : new Date(duplicatePayment.paymentDate)
+                        ).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (duplicatePayment) {
+                  handleEdit(duplicatePayment);
+                  setDuplicatePayment(null);
+                }
+              }}
+            >
+              Editar pago existente
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

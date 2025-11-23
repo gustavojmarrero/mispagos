@@ -108,8 +108,8 @@ export function Dashboard() {
   );
 
   const cardPeriods = useMemo(
-    () => analyzeCardPeriods(cards, filteredPaymentInstances, scheduledPayments),
-    [cards, filteredPaymentInstances, scheduledPayments]
+    () => analyzeCardPeriods(cards, paymentInstances, scheduledPayments),
+    [cards, paymentInstances, scheduledPayments]
   );
 
   const smartAlerts = useMemo(

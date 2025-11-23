@@ -419,7 +419,7 @@ export function generateSmartAlerts(
       action: {
         label: 'Programar pago',
         route: '/payments',
-        params: { cardId: analysis.card.id },
+        params: { cardId: analysis.card.id, from: 'dashboard' },
       },
       data: analysis,
       sortValue: daysAfterClosing, // Para ordenar por días después del corte

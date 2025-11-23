@@ -61,8 +61,8 @@ export function Cards() {
   const [formData, setFormData] = useState<CardFormData>({
     name: '',
     lastDigits: '',
-    closingDay: 1,
-    dueDay: 1,
+    closingDay: 0,
+    dueDay: 0,
     creditLimit: 0,
     currentBalance: 0,
     physicalCardNumber: '',
@@ -79,6 +79,10 @@ export function Cards() {
   const [availableCreditInput, setAvailableCreditInput] = useState('');
   const [isEditingCreditLimit, setIsEditingCreditLimit] = useState(false);
   const [isEditingAvailableCredit, setIsEditingAvailableCredit] = useState(false);
+  const [closingDayInput, setClosingDayInput] = useState('');
+  const [dueDayInput, setDueDayInput] = useState('');
+  const [isEditingClosingDay, setIsEditingClosingDay] = useState(false);
+  const [isEditingDueDay, setIsEditingDueDay] = useState(false);
 
   // Estados para búsqueda y ordenamiento
   const [searchTerm, setSearchTerm] = useState('');
@@ -158,6 +162,16 @@ export function Cards() {
 
     if (formData.clabeAccount && !isValidCLABE(formData.clabeAccount)) {
       toast.error('La cuenta CLABE debe tener exactamente 18 dígitos');
+      return;
+    }
+
+    if (formData.closingDay < 1 || formData.closingDay > 31) {
+      toast.error('El día de corte debe estar entre 1 y 31');
+      return;
+    }
+
+    if (formData.dueDay < 1 || formData.dueDay > 31) {
+      toast.error('El día de pago debe estar entre 1 y 31');
       return;
     }
 
@@ -241,8 +255,8 @@ export function Cards() {
     setFormData({
       name: '',
       lastDigits: '',
-      closingDay: 1,
-      dueDay: 1,
+      closingDay: 0,
+      dueDay: 0,
       creditLimit: 0,
       currentBalance: 0,
       physicalCardNumber: '',
@@ -255,6 +269,8 @@ export function Cards() {
     });
     setEditingCard(null);
     setShowForm(false);
+    setClosingDayInput('');
+    setDueDayInput('');
   };
 
   const getBankName = (bankId: string) => {
@@ -590,12 +606,24 @@ export function Cards() {
                     <Label htmlFor="closingDay">Día de corte *</Label>
                     <Input
                       id="closingDay"
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={formData.closingDay}
-                      onChange={(e) => setFormData({ ...formData, closingDay: parseInt(e.target.value) || 1 })}
-                      onFocus={(e) => e.target.select()}
+                      type="text"
+                      inputMode="numeric"
+                      value={isEditingClosingDay ? closingDayInput : (formData.closingDay > 0 ? formData.closingDay.toString() : '')}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '');
+                        setClosingDayInput(value);
+                      }}
+                      onFocus={(e) => {
+                        setIsEditingClosingDay(true);
+                        setClosingDayInput(formData.closingDay > 0 ? formData.closingDay.toString() : '');
+                        setTimeout(() => e.target.select(), 0);
+                      }}
+                      onBlur={() => {
+                        const num = parseInt(closingDayInput);
+                        const value = !isNaN(num) && num >= 1 && num <= 31 ? num : 0;
+                        setFormData({ ...formData, closingDay: value });
+                        setIsEditingClosingDay(false);
+                      }}
                       placeholder="1-31"
                       required
                     />
@@ -605,12 +633,24 @@ export function Cards() {
                     <Label htmlFor="dueDay">Día de pago *</Label>
                     <Input
                       id="dueDay"
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={formData.dueDay}
-                      onChange={(e) => setFormData({ ...formData, dueDay: parseInt(e.target.value) || 1 })}
-                      onFocus={(e) => e.target.select()}
+                      type="text"
+                      inputMode="numeric"
+                      value={isEditingDueDay ? dueDayInput : (formData.dueDay > 0 ? formData.dueDay.toString() : '')}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '');
+                        setDueDayInput(value);
+                      }}
+                      onFocus={(e) => {
+                        setIsEditingDueDay(true);
+                        setDueDayInput(formData.dueDay > 0 ? formData.dueDay.toString() : '');
+                        setTimeout(() => e.target.select(), 0);
+                      }}
+                      onBlur={() => {
+                        const num = parseInt(dueDayInput);
+                        const value = !isNaN(num) && num >= 1 && num <= 31 ? num : 0;
+                        setFormData({ ...formData, dueDay: value });
+                        setIsEditingDueDay(false);
+                      }}
                       placeholder="1-31"
                       required
                     />
