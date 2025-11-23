@@ -13,11 +13,12 @@ import {
 interface CardListItemProps {
   card: CardType;
   bankName: string;
+  onView: (card: CardType) => void;
   onEdit: (card: CardType) => void;
   onDelete: (cardId: string) => void;
 }
 
-export function CardListItem({ card, bankName, onEdit, onDelete }: CardListItemProps) {
+export function CardListItem({ card, bankName, onView, onEdit, onDelete }: CardListItemProps) {
   const usagePercent = card.creditLimit > 0
     ? (card.currentBalance / card.creditLimit) * 100
     : 0;
@@ -37,7 +38,10 @@ export function CardListItem({ card, bankName, onEdit, onDelete }: CardListItemP
   const badge = getUsageBadge(usagePercent);
 
   return (
-    <div className="flex items-center gap-4 p-3 bg-white border rounded-lg hover:shadow-sm transition-shadow group">
+    <div
+      className="flex items-center gap-4 p-3 bg-white border rounded-lg hover:shadow-sm transition-shadow group cursor-pointer"
+      onClick={() => onView(card)}
+    >
       {/* Icono y nombre */}
       <div className="flex items-center gap-3 min-w-0 flex-1">
         <div className="bg-gray-50 p-1.5 rounded-lg shrink-0">
@@ -95,16 +99,16 @@ export function CardListItem({ card, bankName, onEdit, onDelete }: CardListItemP
 
       {/* Acciones - desktop */}
       <div className="hidden sm:flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <Button variant="ghost" size="sm" onClick={() => onEdit(card)} className="h-7 px-2">
+        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onEdit(card); }} className="h-7 px-2">
           <Edit className="h-3.5 w-3.5" />
         </Button>
-        <Button variant="ghost" size="sm" onClick={() => onDelete(card.id)} className="h-7 px-2">
+        <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onDelete(card.id); }} className="h-7 px-2">
           <Trash2 className="h-3.5 w-3.5 text-destructive" />
         </Button>
       </div>
 
       {/* Acciones - mobile dropdown */}
-      <div className="sm:hidden">
+      <div className="sm:hidden" onClick={(e) => e.stopPropagation()}>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="h-8 w-8 p-0">

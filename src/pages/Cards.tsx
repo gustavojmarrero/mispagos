@@ -49,6 +49,15 @@ import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { Pagination } from '@/components/ui/pagination';
 import { CardGridItem } from '@/components/cards/CardGridItem';
 import { CardListItem } from '@/components/cards/CardListItem';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/components/ui/sheet';
+import { formatCurrency, getCardIcon } from '@/lib/utils';
 
 export function Cards() {
   const { currentUser } = useAuth();
@@ -58,6 +67,7 @@ export function Cards() {
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCard, setEditingCard] = useState<CardType | null>(null);
+  const [viewingCard, setViewingCard] = useState<CardType | null>(null);
   const [formData, setFormData] = useState<CardFormData>({
     name: '',
     lastDigits: '',
@@ -91,7 +101,7 @@ export function Cards() {
   // Estados para vista y paginación
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const saved = localStorage.getItem('cards-view-mode');
-    return (saved as ViewMode) || 'grid';
+    return (saved as ViewMode) || 'list';
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(() => {
@@ -215,6 +225,17 @@ export function Cards() {
       toast.error('Error al guardar la tarjeta');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleView = (card: CardType) => {
+    setViewingCard(card);
+  };
+
+  const handleEditFromView = () => {
+    if (viewingCard) {
+      setViewingCard(null);
+      handleEdit(viewingCard);
     }
   };
 
@@ -746,6 +767,7 @@ export function Cards() {
                   key={card.id}
                   card={card}
                   bankName={getBankName(card.bankId)}
+                  onView={handleView}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                 />
@@ -761,6 +783,7 @@ export function Cards() {
                   key={card.id}
                   card={card}
                   bankName={getBankName(card.bankId)}
+                  onView={handleView}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                 />
@@ -791,6 +814,115 @@ export function Cards() {
       >
         {showForm ? <X className="h-6 w-6" /> : <Plus className="h-6 w-6" />}
       </Button>
+
+      {/* Sheet de vista de tarjeta */}
+      <Sheet open={!!viewingCard} onOpenChange={() => setViewingCard(null)}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          {viewingCard && (
+            <>
+              <SheetHeader className="text-left">
+                <div className="flex items-center gap-3">
+                  <div className="bg-gray-50 p-2 rounded-lg">
+                    <img src={getCardIcon(viewingCard.cardType)} alt={viewingCard.cardType} className="h-8 w-auto" />
+                  </div>
+                  <div>
+                    <SheetTitle className="text-lg">{viewingCard.name}</SheetTitle>
+                    <SheetDescription className="font-mono">**** {viewingCard.lastDigits}</SheetDescription>
+                  </div>
+                </div>
+              </SheetHeader>
+
+              <div className="mt-6 space-y-6">
+                {/* Información básica */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground">Información</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <p className="text-xs text-muted-foreground">Propietario</p>
+                      <p className="font-medium">{viewingCard.owner}</p>
+                    </div>
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <p className="text-xs text-muted-foreground">Banco</p>
+                      <p className="font-medium">{getBankName(viewingCard.bankId)}</p>
+                    </div>
+                    <div className="bg-muted/50 p-3 rounded-lg">
+                      <p className="text-xs text-muted-foreground">Tipo</p>
+                      <p className="font-medium">{viewingCard.cardType}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Números de tarjeta */}
+                {(viewingCard.physicalCardNumber || viewingCard.digitalCardNumber || viewingCard.clabeAccount) && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-muted-foreground">Números</h4>
+                    <div className="space-y-2">
+                      {viewingCard.physicalCardNumber && (
+                        <div className="bg-muted/50 p-3 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-1">Tarjeta Física</p>
+                          <p className="font-mono text-sm">{formatCardNumber(viewingCard.physicalCardNumber)}</p>
+                        </div>
+                      )}
+                      {viewingCard.digitalCardNumber && (
+                        <div className="bg-muted/50 p-3 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-1">Tarjeta Digital</p>
+                          <p className="font-mono text-sm">{formatCardNumber(viewingCard.digitalCardNumber)}</p>
+                        </div>
+                      )}
+                      {viewingCard.clabeAccount && (
+                        <div className="bg-muted/50 p-3 rounded-lg">
+                          <p className="text-xs text-muted-foreground mb-1">CLABE</p>
+                          <p className="font-mono text-sm">{formatCLABE(viewingCard.clabeAccount)}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Límites y saldos */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground">Límites y Saldos</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="text-muted-foreground">Límite de Crédito</span>
+                      <span className="font-semibold">{formatCurrency(viewingCard.creditLimit)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2 border-b">
+                      <span className="text-muted-foreground">Disponible</span>
+                      <span className="font-semibold text-green-600">{formatCurrency(viewingCard.availableCredit)}</span>
+                    </div>
+                    <div className="flex justify-between items-center py-2">
+                      <span className="text-muted-foreground">Saldo Actual</span>
+                      <span className="font-semibold">{formatCurrency(viewingCard.currentBalance)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Fechas */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground">Fechas de Pago</h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-muted/50 p-3 rounded-lg text-center">
+                      <p className="text-xs text-muted-foreground">Día de Corte</p>
+                      <p className="text-2xl font-bold">{viewingCard.closingDay}</p>
+                    </div>
+                    <div className="bg-muted/50 p-3 rounded-lg text-center">
+                      <p className="text-xs text-muted-foreground">Día de Pago</p>
+                      <p className="text-2xl font-bold">{viewingCard.dueDay}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <SheetFooter className="mt-6">
+                <Button onClick={handleEditFromView} className="w-full">
+                  Editar Tarjeta
+                </Button>
+              </SheetFooter>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

@@ -8,11 +8,12 @@ import { Edit, Trash2, Building2 } from 'lucide-react';
 interface CardGridItemProps {
   card: CardType;
   bankName: string;
+  onView: (card: CardType) => void;
   onEdit: (card: CardType) => void;
   onDelete: (cardId: string) => void;
 }
 
-export function CardGridItem({ card, bankName, onEdit, onDelete }: CardGridItemProps) {
+export function CardGridItem({ card, bankName, onView, onEdit, onDelete }: CardGridItemProps) {
   const usagePercent = card.creditLimit > 0
     ? (card.currentBalance / card.creditLimit) * 100
     : 0;
@@ -32,7 +33,10 @@ export function CardGridItem({ card, bankName, onEdit, onDelete }: CardGridItemP
   const badge = getUsageBadge(usagePercent);
 
   return (
-    <Card className="hover:shadow-md transition-shadow duration-200 group">
+    <Card
+      className="hover:shadow-md transition-shadow duration-200 group cursor-pointer"
+      onClick={() => onView(card)}
+    >
       <CardContent className="p-4">
         {/* Header con icono y nombre */}
         <div className="flex items-start gap-3 mb-3">
@@ -92,11 +96,21 @@ export function CardGridItem({ card, bankName, onEdit, onDelete }: CardGridItemP
 
         {/* Acciones */}
         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Button variant="ghost" size="sm" onClick={() => onEdit(card)} className="flex-1 h-7 text-xs">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); onEdit(card); }}
+            className="flex-1 h-7 text-xs"
+          >
             <Edit className="h-3 w-3 mr-1" />
             Editar
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => onDelete(card.id)} className="h-7 px-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => { e.stopPropagation(); onDelete(card.id); }}
+            className="h-7 px-2"
+          >
             <Trash2 className="h-3 w-3 text-destructive" />
           </Button>
         </div>

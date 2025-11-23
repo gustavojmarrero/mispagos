@@ -14,6 +14,7 @@ import {
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServices } from '@/hooks/useServices';
+import { useBanks } from '@/hooks/useBanks';
 import { generateCurrentAndNextMonthInstances } from '@/lib/paymentInstances';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -92,6 +93,7 @@ const getOrdinal = (num: number): string => {
 export function Payments() {
   const { currentUser } = useAuth();
   const { services } = useServices();
+  const { banks } = useBanks();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [returnToDashboard, setReturnToDashboard] = useState(false);
@@ -118,6 +120,12 @@ export function Payments() {
   const [amountInput, setAmountInput] = useState('');
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [duplicatePayment, setDuplicatePayment] = useState<ScheduledPayment | null>(null);
+
+  // Estados para filtros
+  const [typeFilter, setTypeFilter] = useState<'all' | 'card_payment' | 'service_payment'>('all');
+  const [bankFilter, setBankFilter] = useState<string>('all');
+  const [ownerFilter, setOwnerFilter] = useState<string>('all');
+  const [methodFilter, setMethodFilter] = useState<string>('all');
 
   useEffect(() => {
     fetchPayments();
@@ -510,6 +518,32 @@ export function Payments() {
   const filteredAndSortedPayments = useMemo(() => {
     let filtered = payments;
 
+    // Apply type filter
+    if (typeFilter !== 'all') {
+      filtered = filtered.filter((payment) => payment.paymentType === typeFilter);
+    }
+
+    // Apply sub-filters for cards
+    if (typeFilter === 'card_payment') {
+      if (bankFilter !== 'all') {
+        filtered = filtered.filter((payment) => {
+          const card = cards.find((c) => c.id === payment.cardId);
+          return card?.bankId === bankFilter;
+        });
+      }
+      if (ownerFilter !== 'all') {
+        filtered = filtered.filter((payment) => {
+          const card = cards.find((c) => c.id === payment.cardId);
+          return card?.owner === ownerFilter;
+        });
+      }
+    }
+
+    // Apply sub-filter for services (filter by service)
+    if (typeFilter === 'service_payment' && methodFilter !== 'all') {
+      filtered = filtered.filter((payment) => payment.serviceId === methodFilter);
+    }
+
     // Apply search filter
     if (searchTerm) {
       filtered = filtered.filter((payment) => {
@@ -540,7 +574,7 @@ export function Payments() {
     });
 
     return sorted;
-  }, [payments, searchTerm, sortBy, cards, services]);
+  }, [payments, searchTerm, sortBy, cards, services, typeFilter, bankFilter, ownerFilter, methodFilter]);
 
   if (loading) {
     return (
@@ -822,7 +856,95 @@ export function Payments() {
 
       {/* Search and Filter */}
       <Card className="shadow-sm">
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-4">
+          {/* Filtro principal: Tipo de pago */}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={typeFilter === 'all' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setTypeFilter('all');
+                setBankFilter('all');
+                setOwnerFilter('all');
+                setMethodFilter('all');
+              }}
+            >
+              Todos
+            </Button>
+            <Button
+              variant={typeFilter === 'card_payment' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setTypeFilter('card_payment');
+                setMethodFilter('all');
+              }}
+            >
+              <CreditCard className="h-4 w-4 mr-1" />
+              Tarjetas
+            </Button>
+            <Button
+              variant={typeFilter === 'service_payment' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => {
+                setTypeFilter('service_payment');
+                setBankFilter('all');
+                setOwnerFilter('all');
+              }}
+            >
+              <Store className="h-4 w-4 mr-1" />
+              Servicios
+            </Button>
+          </div>
+
+          {/* Sub-filtros condicionales */}
+          {typeFilter === 'card_payment' && (
+            <div className="flex flex-wrap gap-3">
+              <Select value={bankFilter} onValueChange={setBankFilter}>
+                <SelectTrigger className="w-full sm:w-44">
+                  <SelectValue placeholder="Banco" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los bancos</SelectItem>
+                  {banks.map((bank) => (
+                    <SelectItem key={bank.id} value={bank.id}>
+                      {bank.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+                <SelectTrigger className="w-full sm:w-44">
+                  <SelectValue placeholder="Propietario" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="Gustavo">Gustavo</SelectItem>
+                  <SelectItem value="Sandra">Sandra</SelectItem>
+                  <SelectItem value="Guatever">Guatever</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {typeFilter === 'service_payment' && (
+            <div className="flex flex-wrap gap-3">
+              <Select value={methodFilter} onValueChange={setMethodFilter}>
+                <SelectTrigger className="w-full sm:w-52">
+                  <SelectValue placeholder="Servicio" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los servicios</SelectItem>
+                  {services.map((service) => (
+                    <SelectItem key={service.id} value={service.id}>
+                      {service.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Búsqueda y ordenamiento */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -847,18 +969,27 @@ export function Payments() {
               </SelectContent>
             </Select>
           </div>
-          {searchTerm && (
-            <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
+
+          {/* Contador de resultados */}
+          {(searchTerm || typeFilter !== 'all' || bankFilter !== 'all' || ownerFilter !== 'all' || methodFilter !== 'all') && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>
                 {filteredAndSortedPayments.length} de {payments.length} pagos
               </span>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setSearchTerm('')}
+                onClick={() => {
+                  setSearchTerm('');
+                  setTypeFilter('all');
+                  setBankFilter('all');
+                  setOwnerFilter('all');
+                  setMethodFilter('all');
+                }}
                 className="h-auto p-1"
               >
-                <X className="h-3 w-3" />
+                <X className="h-3 w-3 mr-1" />
+                Limpiar filtros
               </Button>
             </div>
           )}
