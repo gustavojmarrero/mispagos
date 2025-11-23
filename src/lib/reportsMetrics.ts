@@ -400,3 +400,106 @@ export function calculateCashProjection(
     weeks,
   };
 }
+
+// ============================================
+// 7. RESUMEN DE CRÉDITO
+// ============================================
+
+export interface CreditByType {
+  type: 'Visa' | 'Mastercard' | 'Amex' | 'Departamental';
+  creditLimit: number;
+  availableCredit: number;
+  usedCredit: number;
+  usagePercent: number;
+  cardCount: number;
+}
+
+export interface CreditSummary {
+  totalCreditLimit: number;
+  totalAvailableCredit: number;
+  totalUsedCredit: number;
+  totalUsagePercent: number;
+  byType: CreditByType[];
+  brandCards: {
+    creditLimit: number;
+    availableCredit: number;
+    usedCredit: number;
+    usagePercent: number;
+    cardCount: number;
+  };
+  departamentalCards: {
+    creditLimit: number;
+    availableCredit: number;
+    usedCredit: number;
+    usagePercent: number;
+    cardCount: number;
+  };
+}
+
+export function calculateCreditSummary(cards: CardType[]): CreditSummary {
+  const typeGroups: Record<string, CreditByType> = {
+    Visa: { type: 'Visa', creditLimit: 0, availableCredit: 0, usedCredit: 0, usagePercent: 0, cardCount: 0 },
+    Mastercard: { type: 'Mastercard', creditLimit: 0, availableCredit: 0, usedCredit: 0, usagePercent: 0, cardCount: 0 },
+    Amex: { type: 'Amex', creditLimit: 0, availableCredit: 0, usedCredit: 0, usagePercent: 0, cardCount: 0 },
+    Departamental: { type: 'Departamental', creditLimit: 0, availableCredit: 0, usedCredit: 0, usagePercent: 0, cardCount: 0 },
+  };
+
+  let totalCreditLimit = 0;
+  let totalAvailableCredit = 0;
+
+  cards.forEach(card => {
+    const cardType = card.cardType || 'Departamental';
+    const type = typeGroups[cardType] ? cardType : 'Departamental';
+
+    typeGroups[type].creditLimit += card.creditLimit;
+    typeGroups[type].availableCredit += card.availableCredit;
+    typeGroups[type].usedCredit += card.currentBalance;
+    typeGroups[type].cardCount += 1;
+
+    totalCreditLimit += card.creditLimit;
+    totalAvailableCredit += card.availableCredit;
+  });
+
+  // Calcular porcentajes por tipo
+  Object.values(typeGroups).forEach(group => {
+    group.usagePercent = group.creditLimit > 0
+      ? (group.usedCredit / group.creditLimit) * 100
+      : 0;
+  });
+
+  const totalUsedCredit = totalCreditLimit - totalAvailableCredit;
+  const totalUsagePercent = totalCreditLimit > 0
+    ? (totalUsedCredit / totalCreditLimit) * 100
+    : 0;
+
+  // Agrupar tarjetas de marca (Visa, Mastercard, Amex) vs Departamentales
+  const brandTypes = ['Visa', 'Mastercard', 'Amex'];
+  const brandCards = {
+    creditLimit: brandTypes.reduce((sum, t) => sum + typeGroups[t].creditLimit, 0),
+    availableCredit: brandTypes.reduce((sum, t) => sum + typeGroups[t].availableCredit, 0),
+    usedCredit: brandTypes.reduce((sum, t) => sum + typeGroups[t].usedCredit, 0),
+    usagePercent: 0,
+    cardCount: brandTypes.reduce((sum, t) => sum + typeGroups[t].cardCount, 0),
+  };
+  brandCards.usagePercent = brandCards.creditLimit > 0
+    ? (brandCards.usedCredit / brandCards.creditLimit) * 100
+    : 0;
+
+  const departamentalCards = {
+    creditLimit: typeGroups.Departamental.creditLimit,
+    availableCredit: typeGroups.Departamental.availableCredit,
+    usedCredit: typeGroups.Departamental.usedCredit,
+    usagePercent: typeGroups.Departamental.usagePercent,
+    cardCount: typeGroups.Departamental.cardCount,
+  };
+
+  return {
+    totalCreditLimit,
+    totalAvailableCredit,
+    totalUsedCredit,
+    totalUsagePercent,
+    byType: Object.values(typeGroups).filter(g => g.cardCount > 0),
+    brandCards,
+    departamentalCards,
+  };
+}

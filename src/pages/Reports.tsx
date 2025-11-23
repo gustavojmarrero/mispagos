@@ -10,12 +10,14 @@ import {
   calculateCardHealth,
   calculateServicesAnalysis,
   calculateCashProjection,
+  calculateCreditSummary,
   type PaymentCompliance,
   type MonthlyObligations,
   type PaymentFlow,
   type CardHealth,
   type ServicesAnalysis,
   type CashProjection,
+  type CreditSummary,
 } from '@/lib/reportsMetrics';
 import { PaymentComplianceCard } from '@/components/reports/PaymentComplianceCard';
 import { MonthlyObligationsCard } from '@/components/reports/MonthlyObligationsCard';
@@ -23,6 +25,7 @@ import { PaymentFlowCard } from '@/components/reports/PaymentFlowCard';
 import { CardHealthCard } from '@/components/reports/CardHealthCard';
 import { ServicesAnalysisCard } from '@/components/reports/ServicesAnalysisCard';
 import { CashProjectionCard } from '@/components/reports/CashProjectionCard';
+import { CreditSummaryCard } from '@/components/reports/CreditSummaryCard';
 import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import type { DateRange } from '@/components/dashboard/DateRangeFilter';
 
@@ -51,6 +54,7 @@ export function Reports() {
   const [cardHealth, setCardHealth] = useState<CardHealth[]>([]);
   const [servicesAnalysis, setServicesAnalysis] = useState<ServicesAnalysis | null>(null);
   const [cashProjection, setCashProjection] = useState<CashProjection | null>(null);
+  const [creditSummary, setCreditSummary] = useState<CreditSummary | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -188,6 +192,10 @@ export function Reports() {
       scheduledPayments
     );
     setCashProjection(projectionData);
+
+    // Credit Summary (independent of date range)
+    const creditData = calculateCreditSummary(cards);
+    setCreditSummary(creditData);
   };
 
   if (loading) {
@@ -232,6 +240,9 @@ export function Reports() {
 
         {/* Cash Projection */}
         {cashProjection && <CashProjectionCard data={cashProjection} />}
+
+        {/* Credit Summary */}
+        {creditSummary && <CreditSummaryCard data={creditSummary} />}
       </div>
     </div>
   );
