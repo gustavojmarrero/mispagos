@@ -8,6 +8,7 @@ import type { Card as CardType, PaymentInstance, ScheduledPayment } from '@/lib/
 import {
   calculateWeeklyCashFlow,
   analyzeCardPeriods,
+  analyzeServiceBillingCycles,
   generateSmartAlerts,
   getNext7DaysTimeline,
 } from '@/lib/dashboardMetrics';
@@ -114,6 +115,12 @@ export function Dashboard() {
     [cards, paymentInstances, scheduledPayments]
   );
 
+  // Analizar servicios con ciclo de facturación
+  const serviceBillingAnalysis = useMemo(
+    () => analyzeServiceBillingCycles(services, paymentInstances),
+    [services, paymentInstances]
+  );
+
   const smartAlerts = useMemo(
     () =>
       generateSmartAlerts(
@@ -122,9 +129,10 @@ export function Dashboard() {
         scheduledPayments,
         cardPeriods,
         cashFlow,
-        banks
+        banks,
+        serviceBillingAnalysis
       ),
-    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow, banks]
+    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow, banks, serviceBillingAnalysis]
   );
 
   const timeline = useMemo(

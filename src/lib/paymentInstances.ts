@@ -12,6 +12,7 @@ import type {
   ScheduledPayment,
   PaymentInstance,
   DayOfWeek,
+  Service,
 } from './types';
 
 /**
@@ -36,6 +37,7 @@ export function getNextMonthRange(): { start: Date; end: Date } {
 
 /**
  * Calcula la próxima fecha de ocurrencia de un pago programado
+ * Para servicios con billing_cycle, usar generateBillingCycleInstances en su lugar
  */
 export function getNextOccurrenceDate(
   scheduledPayment: ScheduledPayment,
@@ -48,6 +50,12 @@ export function getNextOccurrenceDate(
 
   // Para servicios
   if (scheduledPayment.paymentType === 'service_payment') {
+    // Para servicios con billing_cycle, NO usar esta función
+    // (se maneja por generateBillingCycleInstances con el servicio completo)
+    if (scheduledPayment.frequency === 'billing_cycle') {
+      return null;
+    }
+
     if (scheduledPayment.frequency === 'weekly' && scheduledPayment.dayOfWeek !== undefined) {
       return getNextWeekday(fromDate, scheduledPayment.dayOfWeek);
     }
@@ -101,6 +109,167 @@ function getNextMonthDay(fromDate: Date, targetDay: number): Date {
  */
 function getLastDayOfMonth(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+}
+
+/**
+ * Calcula la fecha de vencimiento para un servicio con ciclo de facturación
+ * Similar a la lógica de tarjetas de crédito
+ */
+export function getBillingCycleDueDate(
+  service: Service,
+  referenceDate: Date = new Date()
+): Date | null {
+  if (service.serviceType !== 'billing_cycle' || !service.billingCycleDay || !service.billingDueDay) {
+    return null;
+  }
+
+  const { billingCycleDay, billingDueDay } = service;
+  const today = new Date(referenceDate);
+  today.setHours(0, 0, 0, 0);
+
+  const currentDay = today.getDate();
+  let dueDateMonth = today.getMonth();
+  let dueDateYear = today.getFullYear();
+
+  // Lógica similar a tarjetas:
+  // - Si el día de corte es ANTES del día de vencimiento (ej: corte 15, vence 5)
+  //   significa que el corte y el vencimiento son en meses diferentes
+  // - Si el día de corte es DESPUÉS del día de vencimiento (ej: corte 5, vence 15)
+  //   significa que el corte y el vencimiento son en el mismo mes
+
+  if (billingCycleDay > billingDueDay) {
+    // Corte y vencimiento en meses diferentes (ej: corte 15, vence 5 del siguiente)
+    if (currentDay <= billingCycleDay) {
+      // Estamos antes del corte: vencimiento es este mes o el siguiente
+      if (currentDay > billingDueDay) {
+        // Ya pasó el vencimiento de este mes, el siguiente es el próximo mes
+        dueDateMonth += 1;
+      }
+    } else {
+      // Ya pasó el corte: vencimiento es el siguiente mes
+      dueDateMonth += 1;
+    }
+  } else {
+    // Corte y vencimiento en el mismo mes (ej: corte 5, vence 15)
+    if (currentDay > billingDueDay) {
+      // Ya pasó el vencimiento, el siguiente es el próximo mes
+      dueDateMonth += 1;
+    }
+  }
+
+  // Ajustar año si el mes se desbordó
+  if (dueDateMonth > 11) {
+    dueDateMonth = dueDateMonth - 12;
+    dueDateYear += 1;
+  }
+
+  // Ajustar el día si el mes no tiene suficientes días
+  const lastDay = new Date(dueDateYear, dueDateMonth + 1, 0).getDate();
+  const adjustedDueDay = Math.min(billingDueDay, lastDay);
+
+  return new Date(dueDateYear, dueDateMonth, adjustedDueDay);
+}
+
+/**
+ * Calcula la fecha de corte para un servicio con ciclo de facturación
+ */
+export function getBillingCycleCutoffDate(
+  service: Service,
+  referenceDate: Date = new Date()
+): Date | null {
+  if (service.serviceType !== 'billing_cycle' || !service.billingCycleDay) {
+    return null;
+  }
+
+  const { billingCycleDay, billingDueDay } = service;
+  const today = new Date(referenceDate);
+  today.setHours(0, 0, 0, 0);
+
+  const currentDay = today.getDate();
+  let cutoffMonth = today.getMonth();
+  let cutoffYear = today.getFullYear();
+
+  // Determinar si el corte ya pasó este mes
+  if (billingCycleDay && billingDueDay && billingCycleDay > billingDueDay) {
+    // Corte y vencimiento en meses diferentes
+    if (currentDay > billingCycleDay) {
+      // Ya pasó el corte, el siguiente es el próximo mes
+      cutoffMonth += 1;
+    }
+  } else {
+    // Corte y vencimiento en el mismo mes
+    if (currentDay > billingCycleDay) {
+      cutoffMonth += 1;
+    }
+  }
+
+  // Ajustar año si el mes se desbordó
+  if (cutoffMonth > 11) {
+    cutoffMonth = cutoffMonth - 12;
+    cutoffYear += 1;
+  }
+
+  // Ajustar el día si el mes no tiene suficientes días
+  const lastDay = new Date(cutoffYear, cutoffMonth + 1, 0).getDate();
+  const adjustedCutoffDay = Math.min(billingCycleDay, lastDay);
+
+  return new Date(cutoffYear, cutoffMonth, adjustedCutoffDay);
+}
+
+/**
+ * Genera instancias para servicios con ciclo de facturación
+ */
+export function generateBillingCycleInstances(
+  scheduledPayment: ScheduledPayment,
+  service: Service,
+  startDate: Date,
+  endDate: Date
+): Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] {
+  const instances: Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] = [];
+
+  if (service.serviceType !== 'billing_cycle' || !service.billingDueDay) {
+    return instances;
+  }
+
+  // Generar instancias mensuales basadas en el día de vencimiento
+  let currentDate = new Date(startDate);
+
+  while (currentDate <= endDate) {
+    const dueDate = getBillingCycleDueDate(service, currentDate);
+
+    if (!dueDate || dueDate > endDate) {
+      // Avanzar al siguiente mes
+      currentDate.setMonth(currentDate.getMonth() + 1);
+      currentDate.setDate(1);
+      continue;
+    }
+
+    if (dueDate >= startDate) {
+      instances.push({
+        userId: scheduledPayment.userId,
+        householdId: scheduledPayment.householdId,
+        scheduledPaymentId: scheduledPayment.id,
+        paymentType: scheduledPayment.paymentType,
+        dueDate,
+        amount: 0, // Monto $0 hasta que se conozca (después del corte)
+        description: scheduledPayment.description,
+        status: 'pending',
+        cardId: scheduledPayment.cardId,
+        serviceId: scheduledPayment.serviceId,
+        createdBy: scheduledPayment.createdBy,
+        createdByName: scheduledPayment.createdByName,
+        updatedBy: scheduledPayment.updatedBy,
+        updatedByName: scheduledPayment.updatedByName,
+      });
+    }
+
+    // Avanzar al siguiente mes para evitar duplicados
+    currentDate = new Date(dueDate);
+    currentDate.setMonth(currentDate.getMonth() + 1);
+    currentDate.setDate(1);
+  }
+
+  return instances;
 }
 
 /**
@@ -208,29 +377,53 @@ export function generateInstancesForDateRange(
 
 /**
  * Genera instancias para el mes actual y el próximo mes
+ * @param scheduledPayment El pago programado
+ * @param service El servicio asociado (requerido para billing_cycle)
  */
 export async function generateCurrentAndNextMonthInstances(
-  scheduledPayment: ScheduledPayment
+  scheduledPayment: ScheduledPayment,
+  service?: Service
 ): Promise<void> {
   if (!scheduledPayment.isActive) return;
 
   const currentMonth = getCurrentMonthRange();
   const nextMonth = getNextMonthRange();
 
-  // Generar instancias para ambos rangos
-  const currentMonthInstances = generateInstancesForDateRange(
-    scheduledPayment,
-    currentMonth.start,
-    currentMonth.end
-  );
+  let allInstances: Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] = [];
 
-  const nextMonthInstances = generateInstancesForDateRange(
-    scheduledPayment,
-    nextMonth.start,
-    nextMonth.end
-  );
+  // Para servicios con billing_cycle, usar la lógica específica
+  if (scheduledPayment.frequency === 'billing_cycle' && service?.serviceType === 'billing_cycle') {
+    const currentMonthInstances = generateBillingCycleInstances(
+      scheduledPayment,
+      service,
+      currentMonth.start,
+      currentMonth.end
+    );
 
-  const allInstances = [...currentMonthInstances, ...nextMonthInstances];
+    const nextMonthInstances = generateBillingCycleInstances(
+      scheduledPayment,
+      service,
+      nextMonth.start,
+      nextMonth.end
+    );
+
+    allInstances = [...currentMonthInstances, ...nextMonthInstances];
+  } else {
+    // Lógica existente para otros tipos de pagos
+    const currentMonthInstances = generateInstancesForDateRange(
+      scheduledPayment,
+      currentMonth.start,
+      currentMonth.end
+    );
+
+    const nextMonthInstances = generateInstancesForDateRange(
+      scheduledPayment,
+      nextMonth.start,
+      nextMonth.end
+    );
+
+    allInstances = [...currentMonthInstances, ...nextMonthInstances];
+  }
 
   // Verificar cuáles ya existen
   const existingInstances = await getExistingInstances(
@@ -306,10 +499,14 @@ async function getExistingInstances(
 /**
  * Verifica si es necesario generar instancias para el próximo mes
  * y las genera si es necesario
+ * @param householdId ID del hogar
+ * @param scheduledPayments Lista de pagos programados
+ * @param services Lista de servicios (necesario para billing_cycle)
  */
 export async function ensureMonthlyInstances(
   householdId: string,
-  scheduledPayments: ScheduledPayment[]
+  scheduledPayments: ScheduledPayment[],
+  services?: Service[]
 ): Promise<void> {
   const nextMonth = getNextMonthRange();
 
@@ -329,7 +526,12 @@ export async function ensureMonthlyInstances(
 
     // Si no existen, generar
     if (snapshot.empty) {
-      await generateCurrentAndNextMonthInstances(scheduledPayment);
+      // Buscar el servicio asociado si es billing_cycle
+      const service = scheduledPayment.frequency === 'billing_cycle' && scheduledPayment.serviceId
+        ? services?.find(s => s.id === scheduledPayment.serviceId)
+        : undefined;
+
+      await generateCurrentAndNextMonthInstances(scheduledPayment, service);
     }
   }
 }

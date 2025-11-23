@@ -24,11 +24,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { Service, ServiceFormData, PaymentMethod } from '@/lib/types';
-import { Store, Plus, X, Search, Loader2, CreditCard, Banknote, Edit } from 'lucide-react';
+import type { Service, ServiceFormData, PaymentMethod, ServiceType, PaymentInstance } from '@/lib/types';
+import { Store, Plus, X, Search, Loader2, CreditCard, Banknote, Edit, Calendar, CalendarCheck } from 'lucide-react';
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { ServiceGridItem } from '@/components/services/ServiceGridItem';
 import { ServiceListItem } from '@/components/services/ServiceListItem';
+import { ServiceBillingHistory } from '@/components/services/ServiceBillingHistory';
 import {
   Sheet,
   SheetContent,
@@ -41,6 +42,7 @@ import {
 export function Services() {
   const { currentUser } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
+  const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -55,10 +57,12 @@ export function Services() {
   const [formData, setFormData] = useState<ServiceFormData>({
     name: '',
     paymentMethod: 'transfer',
+    serviceType: 'fixed',
   });
 
   useEffect(() => {
     fetchServices();
+    fetchPaymentInstances();
   }, [currentUser]);
 
   const fetchServices = async () => {
@@ -82,6 +86,30 @@ export function Services() {
       console.error('Error fetching services:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPaymentInstances = async () => {
+    if (!currentUser) return;
+
+    try {
+      const instancesQuery = query(
+        collection(db, 'payment_instances'),
+        where('householdId', '==', currentUser.householdId)
+      );
+      const snapshot = await getDocs(instancesQuery);
+      const instancesData = snapshot.docs.map((doc) => ({
+        ...doc.data(),
+        id: doc.id,
+        dueDate: doc.data().dueDate?.toDate() || new Date(),
+        paidDate: doc.data().paidDate?.toDate(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+      })) as PaymentInstance[];
+
+      setPaymentInstances(instancesData);
+    } catch (error) {
+      console.error('Error fetching payment instances:', error);
     }
   };
 
@@ -142,6 +170,9 @@ export function Services() {
     setFormData({
       name: service.name,
       paymentMethod: service.paymentMethod,
+      serviceType: service.serviceType || 'fixed',
+      billingCycleDay: service.billingCycleDay,
+      billingDueDay: service.billingDueDay,
     });
     setShowForm(true);
   };
@@ -163,6 +194,9 @@ export function Services() {
     setFormData({
       name: '',
       paymentMethod: 'transfer',
+      serviceType: 'fixed',
+      billingCycleDay: undefined,
+      billingDueDay: undefined,
     });
     setEditingService(null);
     setShowForm(false);
@@ -260,6 +294,89 @@ export function Services() {
                   Indica cómo pagas normalmente este servicio
                 </p>
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="serviceType">Tipo de servicio *</Label>
+                <Select
+                  value={formData.serviceType}
+                  onValueChange={(value) => setFormData({
+                    ...formData,
+                    serviceType: value as ServiceType,
+                    // Limpiar campos de ciclo si cambia a fijo
+                    billingCycleDay: value === 'fixed' ? undefined : formData.billingCycleDay,
+                    billingDueDay: value === 'fixed' ? undefined : formData.billingDueDay,
+                  })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona tipo de servicio" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="fixed">Monto fijo recurrente</SelectItem>
+                    <SelectItem value="billing_cycle">Con ciclo de facturación</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {formData.serviceType === 'billing_cycle'
+                    ? 'Como CFE o agua: el monto varía y se conoce al llegar el recibo'
+                    : 'Como Netflix: el monto es siempre el mismo'}
+                </p>
+              </div>
+
+              {/* Campos para servicios con ciclo de facturación */}
+              {formData.serviceType === 'billing_cycle' && (
+                <div className="space-y-4 p-4 bg-muted/50 rounded-lg border border-muted">
+                  <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                    <Calendar className="h-4 w-4" />
+                    <span>Configuración del ciclo de facturación</span>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="billingCycleDay">Día de corte *</Label>
+                      <Select
+                        value={formData.billingCycleDay?.toString() || ''}
+                        onValueChange={(value) => setFormData({ ...formData, billingCycleDay: parseInt(value) })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Día del mes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                            <SelectItem key={day} value={day.toString()}>
+                              {day}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Día que llega el recibo/factura
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="billingDueDay">Día de vencimiento *</Label>
+                      <Select
+                        value={formData.billingDueDay?.toString() || ''}
+                        onValueChange={(value) => setFormData({ ...formData, billingDueDay: parseInt(value) })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Día del mes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                            <SelectItem key={day} value={day.toString()}>
+                              {day}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Fecha límite para pagar
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex flex-col sm:flex-row justify-end gap-2 pt-4">
                 <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto" disabled={saving}>
@@ -401,6 +518,38 @@ export function Services() {
               </SheetHeader>
 
               <div className="space-y-6 py-6">
+                {/* Tipo de servicio */}
+                <div className="space-y-3">
+                  <h4 className="text-sm font-medium text-muted-foreground">Tipo de Servicio</h4>
+                  <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+                    {viewingService.serviceType === 'billing_cycle' ? (
+                      <CalendarCheck className="h-5 w-5 text-orange-600" />
+                    ) : (
+                      <Store className="h-5 w-5 text-primary" />
+                    )}
+                    <span className="font-medium">
+                      {viewingService.serviceType === 'billing_cycle' ? 'Con ciclo de facturación' : 'Monto fijo recurrente'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Ciclo de facturación (solo si aplica) */}
+                {viewingService.serviceType === 'billing_cycle' && viewingService.billingCycleDay && viewingService.billingDueDay && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-muted-foreground">Ciclo de Facturación</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="p-4 bg-orange-50 dark:bg-orange-950/30 rounded-lg text-center">
+                        <p className="text-xs text-muted-foreground mb-1">Día de corte</p>
+                        <p className="text-2xl font-bold text-orange-600">{viewingService.billingCycleDay}</p>
+                      </div>
+                      <div className="p-4 bg-red-50 dark:bg-red-950/30 rounded-lg text-center">
+                        <p className="text-xs text-muted-foreground mb-1">Día de vencimiento</p>
+                        <p className="text-2xl font-bold text-red-600">{viewingService.billingDueDay}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Método de pago */}
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground">Método de Pago</h4>
@@ -442,6 +591,14 @@ export function Services() {
                     )}
                   </div>
                 </div>
+
+                {/* Historial de pagos para servicios con billing_cycle */}
+                {viewingService.serviceType === 'billing_cycle' && (
+                  <ServiceBillingHistory
+                    service={viewingService}
+                    instances={paymentInstances}
+                  />
+                )}
               </div>
 
               <SheetFooter>

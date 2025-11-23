@@ -77,11 +77,17 @@ export interface BankFormData {
 
 // Service Types
 export type PaymentMethod = 'card' | 'transfer';
+export type ServiceType = 'fixed' | 'billing_cycle';
 
 export interface Service {
   id: string;
   name: string;
   paymentMethod: PaymentMethod;
+  // Tipo de servicio: fijo (monto constante) o con ciclo de facturación (monto variable)
+  serviceType: ServiceType;
+  // Solo para serviceType === 'billing_cycle' (similar a tarjetas de crédito)
+  billingCycleDay?: number; // Día del mes cuando llega el recibo/corte (1-31)
+  billingDueDay?: number;   // Día del mes límite para pagar (1-31)
   userId: string; // Deprecated: mantener por compatibilidad
   householdId: string;
   createdAt: Date;
@@ -95,11 +101,14 @@ export interface Service {
 export interface ServiceFormData {
   name: string;
   paymentMethod: PaymentMethod;
+  serviceType: ServiceType;
+  billingCycleDay?: number;
+  billingDueDay?: number;
 }
 
 // Scheduled Payment Types
 export type PaymentType = 'card_payment' | 'service_payment';
-export type PaymentFrequency = 'monthly' | 'weekly' | 'once';
+export type PaymentFrequency = 'monthly' | 'weekly' | 'once' | 'billing_cycle';
 export type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6; // 0 = Domingo, 5 = Viernes
 
 export interface ScheduledPayment {

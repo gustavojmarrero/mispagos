@@ -306,7 +306,11 @@ export function Payments() {
 
       try {
         console.log('[Payments] Generando instancias para:', savedPayment);
-        await generateCurrentAndNextMonthInstances(savedPayment);
+        // Para billing_cycle, pasar el servicio completo
+        const selectedService = savedPayment.frequency === 'billing_cycle' && savedPayment.serviceId
+          ? services.find(s => s.id === savedPayment.serviceId)
+          : undefined;
+        await generateCurrentAndNextMonthInstances(savedPayment, selectedService);
         console.log('[Payments] Instancias generadas exitosamente');
       } catch (instanceError) {
         console.error('[Payments] Error generando instancias:', instanceError);
@@ -433,6 +437,14 @@ export function Payments() {
     // Para servicios, mostrar la frecuencia
     if (!payment.frequency) return 'N/A';
 
+    if (payment.frequency === 'billing_cycle') {
+      // Obtener info del servicio para mostrar días de corte/vencimiento
+      const service = services.find(s => s.id === payment.serviceId);
+      if (service?.billingCycleDay && service?.billingDueDay) {
+        return `Ciclo facturación (corte día ${service.billingCycleDay})`;
+      }
+      return 'Ciclo facturación';
+    }
     if (payment.frequency === 'weekly') {
       const day = DAYS_OF_WEEK.find((d) => d.value === payment.dayOfWeek);
       return `Semanal (${day?.label || 'N/A'})`;
@@ -691,7 +703,24 @@ export function Payments() {
                       <Label htmlFor="serviceId">Servicio *</Label>
                       <Select
                         value={formData.serviceId}
-                        onValueChange={(value) => setFormData({ ...formData, serviceId: value })}
+                        onValueChange={(value) => {
+                          const selectedService = services.find(s => s.id === value);
+                          const isBillingCycle = selectedService?.serviceType === 'billing_cycle';
+
+                          setFormData({
+                            ...formData,
+                            serviceId: value,
+                            // Auto-seleccionar billing_cycle si el servicio lo requiere
+                            frequency: isBillingCycle ? 'billing_cycle' : formData.frequency,
+                            // Monto $0 para billing_cycle (se ingresa después del corte)
+                            amount: isBillingCycle ? 0 : formData.amount,
+                          });
+
+                          // Limpiar monto si es billing_cycle
+                          if (isBillingCycle) {
+                            setAmountInput('');
+                          }
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecciona un servicio" />
@@ -700,6 +729,7 @@ export function Payments() {
                           {services.map((service) => (
                             <SelectItem key={service.id} value={service.id}>
                               {service.name} ({service.paymentMethod === 'card' ? 'Tarjeta' : 'Transferencia'})
+                              {service.serviceType === 'billing_cycle' && ' - Ciclo facturación'}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -708,6 +738,16 @@ export function Payments() {
                         <p className="text-xs text-muted-foreground">
                           Primero agrega servicios en la sección "Servicios"
                         </p>
+                      )}
+                      {/* Mensaje informativo para servicios con billing_cycle */}
+                      {formData.serviceId && services.find(s => s.id === formData.serviceId)?.serviceType === 'billing_cycle' && (
+                        <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-950/30 rounded-lg border border-orange-200 dark:border-orange-800">
+                          <Info className="h-4 w-4 text-orange-600 mt-0.5 shrink-0" />
+                          <div className="text-xs text-orange-800 dark:text-orange-200">
+                            <p className="font-medium">Servicio con ciclo de facturación</p>
+                            <p className="mt-1">El monto se ingresará cuando llegue el recibo. Se generarán pagos automáticos cada mes.</p>
+                          </div>
+                        </div>
                       )}
                     </div>
                   )}
@@ -806,8 +846,33 @@ export function Payments() {
                       </Popover>
                     </div>
                   </div>
+                ) : formData.frequency === 'billing_cycle' ? (
+                  // Información para servicios con ciclo de facturación
+                  <div className="space-y-4">
+                    <div className="p-4 bg-muted/50 rounded-lg border">
+                      <p className="text-sm font-medium mb-2">Ciclo de facturación automático</p>
+                      {(() => {
+                        const selectedService = services.find(s => s.id === formData.serviceId);
+                        if (selectedService?.billingCycleDay && selectedService?.billingDueDay) {
+                          return (
+                            <div className="grid grid-cols-2 gap-4 mt-3">
+                              <div className="text-center p-3 bg-orange-50 dark:bg-orange-950/30 rounded">
+                                <p className="text-xs text-muted-foreground">Día de corte</p>
+                                <p className="text-xl font-bold text-orange-600">{selectedService.billingCycleDay}</p>
+                              </div>
+                              <div className="text-center p-3 bg-red-50 dark:bg-red-950/30 rounded">
+                                <p className="text-xs text-muted-foreground">Día de vencimiento</p>
+                                <p className="text-xl font-bold text-red-600">{selectedService.billingDueDay}</p>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return <p className="text-sm text-muted-foreground">Las fechas se toman de la configuración del servicio.</p>;
+                      })()}
+                    </div>
+                  </div>
                 ) : (
-                  // Selector de frecuencia para servicios
+                  // Selector de frecuencia para servicios normales
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="frequency">Frecuencia *</Label>

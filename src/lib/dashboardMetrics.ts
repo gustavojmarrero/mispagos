@@ -33,9 +33,24 @@ export interface CardPeriodAnalysis {
   };
 }
 
+export interface ServiceBillingAnalysis {
+  service: Service;
+  currentPeriod: {
+    cutoffDate: Date;       // Fecha de corte
+    dueDate: Date;          // Fecha de vencimiento
+    daysUntilDue: number;
+    daysAfterCutoff: number;
+    hasAmount: boolean;     // Si ya se ingresó el monto
+    amount: number;         // Monto de la instancia
+    instanceId?: string;    // ID de la instancia si existe
+    status: 'awaiting_amount' | 'ready' | 'overdue' | 'upcoming';
+  };
+}
+
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 export type AlertType =
   | 'card_no_payment'
+  | 'service_awaiting_amount'  // Servicio con billing_cycle sin monto después del corte
   | 'overdue'
   | 'upcoming'
   | 'high_week'
@@ -388,6 +403,119 @@ export function analyzeCardPeriods(
 }
 
 /**
+ * Calcula la fecha de corte para un servicio con billing_cycle
+ */
+function getServiceCutoffDate(service: Service, referenceDate: Date): Date {
+  if (!service.billingCycleDay) return new Date();
+
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+  const cutoffDate = new Date(year, month, service.billingCycleDay);
+  cutoffDate.setHours(0, 0, 0, 0);
+
+  return cutoffDate;
+}
+
+/**
+ * Calcula la fecha de vencimiento para un servicio con billing_cycle
+ */
+function getServiceDueDate(service: Service, cutoffDate: Date): Date {
+  if (!service.billingDueDay || !service.billingCycleDay) return new Date();
+
+  const year = cutoffDate.getFullYear();
+  const month = cutoffDate.getMonth();
+
+  let dueMonth = month;
+  let dueYear = year;
+
+  // Si el día de vencimiento es menor que el día de corte, es el mes siguiente
+  if (service.billingDueDay <= service.billingCycleDay) {
+    dueMonth = month + 1;
+    if (dueMonth > 11) {
+      dueMonth = 0;
+      dueYear = year + 1;
+    }
+  }
+
+  const dueDate = new Date(dueYear, dueMonth, service.billingDueDay);
+  dueDate.setHours(23, 59, 59, 999);
+
+  return dueDate;
+}
+
+/**
+ * Analiza servicios con ciclo de facturación
+ */
+export function analyzeServiceBillingCycles(
+  services: Service[],
+  instances: PaymentInstance[]
+): ServiceBillingAnalysis[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Filtrar solo servicios con billing_cycle
+  const billingCycleServices = services.filter(
+    (s) => s.serviceType === 'billing_cycle' && s.billingCycleDay && s.billingDueDay
+  );
+
+  return billingCycleServices.map((service) => {
+    // Calcular fecha de corte del mes actual
+    const cutoffDate = getServiceCutoffDate(service, today);
+
+    // Calcular fecha de vencimiento
+    const dueDate = getServiceDueDate(service, cutoffDate);
+
+    // Calcular días
+    const daysUntilDue = Math.ceil(
+      (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    const daysAfterCutoff = Math.ceil(
+      (today.getTime() - cutoffDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    // Buscar instancia de pago para este servicio en el período actual
+    const toleranceMs = 5 * 24 * 60 * 60 * 1000; // 5 días de tolerancia
+    const serviceInstance = instances.find(
+      (instance) =>
+        instance.serviceId === service.id &&
+        instance.dueDate >= new Date(cutoffDate.getTime() - toleranceMs) &&
+        instance.dueDate <= new Date(dueDate.getTime() + toleranceMs) &&
+        (instance.status === 'pending' || instance.status === 'partial')
+    );
+
+    const hasAmount = serviceInstance ? serviceInstance.amount > 0 : false;
+    const amount = serviceInstance?.amount || 0;
+
+    // Determinar status
+    let status: 'awaiting_amount' | 'ready' | 'overdue' | 'upcoming';
+    if (daysUntilDue < 0) {
+      status = 'overdue';
+    } else if (daysAfterCutoff > 0 && !hasAmount) {
+      // Ya pasó el corte pero no tiene monto
+      status = 'awaiting_amount';
+    } else if (hasAmount) {
+      status = 'ready';
+    } else {
+      status = 'upcoming';
+    }
+
+    return {
+      service,
+      currentPeriod: {
+        cutoffDate,
+        dueDate,
+        daysUntilDue,
+        daysAfterCutoff,
+        hasAmount,
+        amount,
+        instanceId: serviceInstance?.id,
+        status,
+      },
+    };
+  });
+}
+
+/**
  * Genera alertas inteligentes basadas en el estado del sistema
  */
 export function generateSmartAlerts(
@@ -396,7 +524,8 @@ export function generateSmartAlerts(
   _scheduled: ScheduledPayment[],
   cardPeriods: CardPeriodAnalysis[],
   cashFlow: WeeklyCashFlow,
-  banks: { id: string; name: string }[] = []
+  banks: { id: string; name: string }[] = [],
+  serviceBillingAnalysis: ServiceBillingAnalysis[] = []
 ): SmartAlert[] {
   const alerts: SmartAlert[] = [];
   const today = new Date();
@@ -441,6 +570,30 @@ export function generateSmartAlerts(
       },
       data: analysis,
       sortValue: daysAfterClosing, // Para ordenar por días después del corte
+    });
+  });
+
+  // 1.5. Alertas de servicios con billing_cycle sin monto después del corte
+  const servicesNeedingAmount = serviceBillingAnalysis.filter(
+    (analysis) => analysis.currentPeriod.status === 'awaiting_amount'
+  );
+
+  servicesNeedingAmount.forEach((analysis) => {
+    const daysAfterCutoff = analysis.currentPeriod.daysAfterCutoff;
+
+    alerts.push({
+      id: `service-awaiting-amount-${analysis.service.id}`,
+      type: 'service_awaiting_amount',
+      severity: 'critical',
+      title: `${analysis.service.name} sin monto`,
+      description: `Cortó hace ${daysAfterCutoff} día${daysAfterCutoff !== 1 ? 's' : ''}, ingresa el monto del recibo`,
+      action: {
+        label: 'Actualizar monto',
+        route: '/calendar',
+        params: { serviceId: analysis.service.id, instanceId: analysis.currentPeriod.instanceId },
+      },
+      data: analysis,
+      sortValue: daysAfterCutoff,
     });
   });
 
