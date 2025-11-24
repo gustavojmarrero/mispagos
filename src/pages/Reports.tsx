@@ -177,11 +177,11 @@ export function Reports() {
         {/* Credit Summary */}
         {creditSummary && <CreditSummaryCard data={creditSummary} />}
 
-        {/* Services Analysis */}
-        {servicesAnalysis && <ServicesAnalysisCard data={servicesAnalysis} />}
-
         {/* Cash Projection */}
         {cashProjection && <CashProjectionCard data={cashProjection} />}
+
+        {/* Services Analysis */}
+        {servicesAnalysis && <ServicesAnalysisCard data={servicesAnalysis} />}
       </div>
     </div>
   );

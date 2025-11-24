@@ -346,14 +346,18 @@ export function Cards() {
 
     try {
       // Crear registro de pago parcial
-      const newPartialPayment: PartialPayment = {
+      const newPartialPayment: any = {
         id: crypto.randomUUID(),
         amount: amountToPay,
         paidDate: Date.now(),
-        notes: partialNotes || undefined,
         paidBy: currentUser.id,
         paidByName: currentUser.name,
       };
+
+      // Solo agregar notes si tiene valor
+      if (partialNotes && partialNotes.trim()) {
+        newPartialPayment.notes = partialNotes;
+      }
 
       // Calcular nuevos valores
       const newPaidAmount = currentPaid + amountToPay;
@@ -1529,7 +1533,7 @@ export function Cards() {
 
       {/* Modal de Pago Parcial */}
       {showPartialPaymentModal && editingPayment && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4">
           <Card className="w-full max-w-md border-blue-600 shadow-lg">
             <CardHeader className="bg-gradient-to-r from-blue-500/10 to-transparent">
               <CardTitle className="flex items-center gap-2">
