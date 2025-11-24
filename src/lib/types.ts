@@ -106,6 +106,44 @@ export interface ServiceFormData {
   billingDueDay?: number;
 }
 
+// ServiceLine Types - Para múltiples líneas/contratos por servicio
+export interface ServiceLine {
+  id: string;
+  serviceId: string;              // Referencia al Service padre
+
+  // Campos de identificación
+  name: string;                   // Nombre descriptivo (ej: "Línea Casa")
+  lineNumber?: string;            // Número de línea/teléfono (ej: "5551234567")
+  contractNumber?: string;        // Número de contrato (ej: "CT-2024-001")
+  accountNumber?: string;         // Número de cuenta/servicio (ej: "RPU123456")
+
+  // Ciclo de facturación
+  billingCycleDay: number;        // Día de corte (1-31)
+  billingDueDay: number;          // Día de vencimiento (1-31)
+
+  // Estado y metadata
+  isActive: boolean;
+  householdId: string;
+  userId: string;                 // Deprecated: mantener por compatibilidad
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  createdByName: string;
+  updatedBy: string;
+  updatedByName: string;
+}
+
+export interface ServiceLineFormData {
+  serviceId: string;
+  name: string;
+  lineNumber?: string;
+  contractNumber?: string;
+  accountNumber?: string;
+  billingCycleDay: number;
+  billingDueDay: number;
+  isActive: boolean;
+}
+
 // Scheduled Payment Types
 export type PaymentType = 'card_payment' | 'service_payment';
 export type PaymentFrequency = 'monthly' | 'weekly' | 'once' | 'billing_cycle';
@@ -128,6 +166,7 @@ export interface ScheduledPayment {
   // Asociación
   cardId?: string; // Si paymentType = 'card_payment'
   serviceId?: string; // Si paymentType = 'service_payment'
+  serviceLineId?: string; // Si paymentType = 'service_payment' y serviceType = 'billing_cycle'
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -147,6 +186,7 @@ export interface ScheduledPaymentFormData {
   dayOfWeek?: DayOfWeek; // Para servicios
   cardId?: string;
   serviceId?: string;
+  serviceLineId?: string; // Para servicios billing_cycle
   isActive: boolean;
 }
 
@@ -176,6 +216,7 @@ export interface PaymentInstance {
   // Asociaciones heredadas del template
   cardId?: string;
   serviceId?: string;
+  serviceLineId?: string; // Para servicios billing_cycle
   // Información de pago
   paidDate?: Date;
   paidAmount?: number;

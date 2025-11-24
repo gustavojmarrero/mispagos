@@ -52,6 +52,16 @@ service cloud.firestore {
       allow update, delete: if canAccessResource(resource.data);
     }
 
+    // Service Lines collection (líneas/contratos de servicios)
+    match /service_lines/{lineId} {
+      allow read: if canAccessResource(resource.data);
+      allow create: if isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        canAccessHousehold(request.resource.data.householdId)
+      );
+      allow update, delete: if canAccessResource(resource.data);
+    }
+
     // Scheduled Payments collection
     match /scheduled_payments/{paymentId} {
       allow read: if canAccessResource(resource.data);

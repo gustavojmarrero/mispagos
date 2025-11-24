@@ -1,10 +1,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Store, Edit, Trash2, CreditCard, Banknote, Eye } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Store, Edit, Trash2, CreditCard, Banknote, Eye, Cable } from 'lucide-react';
 import type { Service, PaymentMethod } from '@/lib/types';
 
 interface ServiceGridItemProps {
   service: Service;
+  linesCount?: number;
   onView: (service: Service) => void;
   onEdit: (service: Service) => void;
   onDelete: (serviceId: string) => void;
@@ -18,8 +20,9 @@ const getPaymentMethodIcon = (method: PaymentMethod) => {
   return method === 'card' ? CreditCard : Banknote;
 };
 
-export function ServiceGridItem({ service, onView, onEdit, onDelete }: ServiceGridItemProps) {
+export function ServiceGridItem({ service, linesCount, onView, onEdit, onDelete }: ServiceGridItemProps) {
   const PaymentIcon = getPaymentMethodIcon(service.paymentMethod);
+  const showLinesCount = service.serviceType === 'billing_cycle' && linesCount !== undefined && linesCount > 0;
 
   return (
     <Card
@@ -38,6 +41,12 @@ export function ServiceGridItem({ service, onView, onEdit, onDelete }: ServiceGr
             <CardDescription className="flex items-center gap-2 mt-2 text-sm">
               <PaymentIcon className="h-4 w-4" />
               <span>{getPaymentMethodLabel(service.paymentMethod)}</span>
+              {showLinesCount && (
+                <Badge variant="secondary" className="ml-1 text-xs">
+                  <Cable className="h-3 w-3 mr-1" />
+                  {linesCount} {linesCount === 1 ? 'línea' : 'líneas'}
+                </Badge>
+              )}
             </CardDescription>
           </div>
         </div>

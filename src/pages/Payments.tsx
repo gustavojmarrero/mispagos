@@ -15,6 +15,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServices } from '@/hooks/useServices';
 import { useBanks } from '@/hooks/useBanks';
+import { useServiceLines } from '@/hooks/useServiceLines';
 import { generateCurrentAndNextMonthInstances, updateExistingInstances } from '@/lib/paymentInstances';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -63,6 +64,7 @@ import {
   Search,
   Loader2,
   Info,
+  Cable,
 } from 'lucide-react';
 
 const DAYS_OF_WEEK = [
@@ -115,7 +117,14 @@ export function Payments() {
     dayOfWeek: 5,
     cardId: '',
     serviceId: '',
+    serviceLineId: '',
     isActive: true,
+  });
+
+  // Hook para obtener líneas del servicio seleccionado
+  const { serviceLines: selectedServiceLines } = useServiceLines({
+    serviceId: formData.serviceId || undefined,
+    activeOnly: true,
   });
 
   const [amountInput, setAmountInput] = useState('');
@@ -255,6 +264,10 @@ export function Payments() {
         // Limpiar campos no necesarios según el tipo
         cardId: formData.paymentType === 'card_payment' ? formData.cardId : null,
         serviceId: formData.paymentType === 'service_payment' ? formData.serviceId : null,
+        // serviceLineId solo para servicios billing_cycle con líneas configuradas
+        serviceLineId: formData.paymentType === 'service_payment' &&
+                       formData.frequency === 'billing_cycle' &&
+                       formData.serviceLineId ? formData.serviceLineId : null,
         // Para card_payment: usar paymentDate
         paymentDate: formData.paymentType === 'card_payment' ? formData.paymentDate : null,
         // Para service_payment: usar frequency, dueDay y dayOfWeek
@@ -361,6 +374,7 @@ export function Payments() {
       dayOfWeek: payment.dayOfWeek,
       cardId: payment.cardId || '',
       serviceId: payment.serviceId || '',
+      serviceLineId: payment.serviceLineId || '',
       isActive: payment.isActive,
     });
     setShowForm(true);
@@ -403,6 +417,7 @@ export function Payments() {
       dayOfWeek: 5,
       cardId: '',
       serviceId: '',
+      serviceLineId: '',
       isActive: true,
     });
     setAmountInput('');
@@ -724,6 +739,7 @@ export function Payments() {
                           setFormData({
                             ...formData,
                             serviceId: value,
+                            serviceLineId: '', // Limpiar línea al cambiar servicio
                             // Auto-seleccionar billing_cycle si el servicio lo requiere
                             frequency: isBillingCycle ? 'billing_cycle' : formData.frequency,
                             // Monto $0 para billing_cycle (se ingresa después del corte)
@@ -760,6 +776,66 @@ export function Payments() {
                           <div className="text-xs text-orange-800 dark:text-orange-200">
                             <p className="font-medium">Servicio con ciclo de facturación</p>
                             <p className="mt-1">El monto se ingresará cuando llegue el recibo. Se generarán pagos automáticos cada mes.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Selector de línea para servicios billing_cycle con múltiples líneas */}
+                      {formData.serviceId &&
+                       services.find(s => s.id === formData.serviceId)?.serviceType === 'billing_cycle' &&
+                       selectedServiceLines.length > 0 && (
+                        <div className="space-y-2 mt-3">
+                          <Label htmlFor="serviceLineId" className="flex items-center gap-2">
+                            <Cable className="h-4 w-4" />
+                            Línea de servicio *
+                          </Label>
+                          <Select
+                            value={formData.serviceLineId}
+                            onValueChange={(value) => setFormData({ ...formData, serviceLineId: value })}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecciona una línea" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {selectedServiceLines.map((line) => (
+                                <SelectItem key={line.id} value={line.id}>
+                                  {line.name}
+                                  {line.lineNumber && ` (${line.lineNumber})`}
+                                  {' - Corte día '}{line.billingCycleDay}{', vence día '}{line.billingDueDay}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          {/* Mostrar info del ciclo de la línea seleccionada */}
+                          {formData.serviceLineId && (() => {
+                            const selectedLine = selectedServiceLines.find(l => l.id === formData.serviceLineId);
+                            if (!selectedLine) return null;
+                            return (
+                              <div className="grid grid-cols-2 gap-3 mt-2">
+                                <div className="p-3 bg-orange-50 dark:bg-orange-950/30 rounded-lg text-center">
+                                  <p className="text-xs text-muted-foreground mb-1">Día de corte</p>
+                                  <p className="text-xl font-bold text-orange-600">{selectedLine.billingCycleDay}</p>
+                                </div>
+                                <div className="p-3 bg-red-50 dark:bg-red-950/30 rounded-lg text-center">
+                                  <p className="text-xs text-muted-foreground mb-1">Día de vencimiento</p>
+                                  <p className="text-xl font-bold text-red-600">{selectedLine.billingDueDay}</p>
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {/* Mensaje si el servicio billing_cycle no tiene líneas configuradas */}
+                      {formData.serviceId &&
+                       services.find(s => s.id === formData.serviceId)?.serviceType === 'billing_cycle' &&
+                       selectedServiceLines.length === 0 && (
+                        <div className="flex items-start gap-2 p-3 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg border border-yellow-200 dark:border-yellow-800 mt-3">
+                          <Info className="h-4 w-4 text-yellow-600 mt-0.5 shrink-0" />
+                          <div className="text-xs text-yellow-800 dark:text-yellow-200">
+                            <p className="font-medium">Sin líneas configuradas</p>
+                            <p className="mt-1">Este servicio no tiene líneas configuradas. Puedes configurarlas en la sección de Servicios para tener diferentes ciclos de facturación.</p>
                           </div>
                         </div>
                       )}

@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Store, Edit, Trash2, MoreVertical, CreditCard, Banknote, Eye } from 'lucide-react';
+import { Store, Edit, Trash2, MoreVertical, CreditCard, Banknote, Eye, Cable } from 'lucide-react';
 import type { Service, PaymentMethod } from '@/lib/types';
 import {
   DropdownMenu,
@@ -11,6 +11,7 @@ import {
 
 interface ServiceListItemProps {
   service: Service;
+  linesCount?: number;
   onView: (service: Service) => void;
   onEdit: (service: Service) => void;
   onDelete: (serviceId: string) => void;
@@ -26,8 +27,9 @@ const getPaymentMethodBadgeColor = (method: PaymentMethod) => {
     : 'bg-green-100 text-green-700';
 };
 
-export function ServiceListItem({ service, onView, onEdit, onDelete }: ServiceListItemProps) {
+export function ServiceListItem({ service, linesCount, onView, onEdit, onDelete }: ServiceListItemProps) {
   const PaymentIcon = service.paymentMethod === 'card' ? CreditCard : Banknote;
+  const showLinesCount = service.serviceType === 'billing_cycle' && linesCount !== undefined && linesCount > 0;
 
   return (
     <div
@@ -39,8 +41,14 @@ export function ServiceListItem({ service, onView, onEdit, onDelete }: ServiceLi
         <div className="bg-primary/10 p-2 rounded-lg shrink-0">
           <Store className="h-4 w-4 text-primary" />
         </div>
-        <div className="min-w-0">
-          <span className="font-medium text-sm truncate block">{service.name}</span>
+        <div className="min-w-0 flex items-center gap-2">
+          <span className="font-medium text-sm truncate">{service.name}</span>
+          {showLinesCount && (
+            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
+              <Cable className="h-3 w-3 mr-0.5" />
+              {linesCount}
+            </Badge>
+          )}
         </div>
       </div>
 

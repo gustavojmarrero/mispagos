@@ -30,6 +30,8 @@ import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { ServiceGridItem } from '@/components/services/ServiceGridItem';
 import { ServiceListItem } from '@/components/services/ServiceListItem';
 import { ServiceBillingHistory } from '@/components/services/ServiceBillingHistory';
+import { ServiceLineList } from '@/components/services/ServiceLineList';
+import { useServiceLinesGrouped } from '@/hooks/useServiceLines';
 import {
   Sheet,
   SheetContent,
@@ -48,6 +50,7 @@ export function Services() {
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [viewingService, setViewingService] = useState<Service | null>(null);
+  const [editingFromView, setEditingFromView] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'name' | 'method'>('name');
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -60,13 +63,16 @@ export function Services() {
     serviceType: 'fixed',
   });
 
+  // Hook para obtener líneas de servicio agrupadas
+  const { linesCountByService, refetch: refetchServiceLines } = useServiceLinesGrouped();
+
   useEffect(() => {
     fetchServices();
     fetchPaymentInstances();
   }, [currentUser]);
 
-  const fetchServices = async () => {
-    if (!currentUser) return;
+  const fetchServices = async (): Promise<Service[]> => {
+    if (!currentUser) return [];
 
     try {
       const servicesQuery = query(
@@ -82,8 +88,10 @@ export function Services() {
       })) as Service[];
 
       setServices(servicesData);
+      return servicesData;
     } catch (error) {
       console.error('Error fetching services:', error);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -170,8 +178,17 @@ export function Services() {
         toast.success('Servicio creado exitosamente');
       }
 
+      const serviceIdToReopen = editingFromView;
       resetForm();
-      await fetchServices();
+      const updatedServices = await fetchServices();
+
+      // Si estábamos editando desde el Sheet, reabrir con el servicio actualizado
+      if (serviceIdToReopen) {
+        const updatedService = updatedServices.find(s => s.id === serviceIdToReopen);
+        if (updatedService) {
+          setViewingService(updatedService);
+        }
+      }
     } catch (error) {
       console.error('Error saving service:', error);
       toast.error('Error al guardar el servicio');
@@ -186,6 +203,7 @@ export function Services() {
 
   const handleEditFromView = () => {
     if (viewingService) {
+      setEditingFromView(viewingService.id); // Guardar ID para reabrir después
       setViewingService(null);
       handleEdit(viewingService);
     }
@@ -225,6 +243,7 @@ export function Services() {
       billingDueDay: undefined,
     });
     setEditingService(null);
+    setEditingFromView(null);
     setShowForm(false);
   };
 
@@ -494,6 +513,7 @@ export function Services() {
             <ServiceGridItem
               key={service.id}
               service={service}
+              linesCount={linesCountByService[service.id]}
               onView={handleView}
               onEdit={handleEdit}
               onDelete={handleDelete}
@@ -509,6 +529,7 @@ export function Services() {
             <ServiceListItem
               key={service.id}
               service={service}
+              linesCount={linesCountByService[service.id]}
               onView={handleView}
               onEdit={handleEdit}
               onDelete={handleDelete}
@@ -559,10 +580,21 @@ export function Services() {
                   </div>
                 </div>
 
-                {/* Ciclo de facturación (solo si aplica) */}
-                {viewingService.serviceType === 'billing_cycle' && viewingService.billingCycleDay && viewingService.billingDueDay && (
+                {/* Líneas de servicio (solo para billing_cycle) */}
+                {viewingService.serviceType === 'billing_cycle' && (
+                  <ServiceLineList
+                    service={viewingService}
+                    onLinesChange={refetchServiceLines}
+                  />
+                )}
+
+                {/* Ciclo de facturación legacy (solo si tiene valores pero no tiene líneas) */}
+                {viewingService.serviceType === 'billing_cycle' &&
+                 viewingService.billingCycleDay &&
+                 viewingService.billingDueDay &&
+                 !linesCountByService[viewingService.id] && (
                   <div className="space-y-3">
-                    <h4 className="text-sm font-medium text-muted-foreground">Ciclo de Facturación</h4>
+                    <h4 className="text-sm font-medium text-muted-foreground">Ciclo de Facturación (legacy)</h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="p-4 bg-orange-50 dark:bg-orange-950/30 rounded-lg text-center">
                         <p className="text-xs text-muted-foreground mb-1">Día de corte</p>
@@ -573,6 +605,9 @@ export function Services() {
                         <p className="text-2xl font-bold text-red-600">{viewingService.billingDueDay}</p>
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground text-center">
+                      Configura líneas individuales para gestionar múltiples contratos
+                    </p>
                   </div>
                 )}
 

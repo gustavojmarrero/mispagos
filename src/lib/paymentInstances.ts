@@ -15,7 +15,41 @@ import type {
   PaymentInstance,
   DayOfWeek,
   Service,
+  ServiceLine,
 } from './types';
+
+// Tipo helper para configuración de ciclo de facturación
+interface BillingCycleConfig {
+  billingCycleDay: number;
+  billingDueDay: number;
+}
+
+/**
+ * Obtiene la configuración de ciclo de facturación
+ * Prioriza ServiceLine sobre Service para soportar múltiples líneas
+ */
+function getBillingCycleConfig(
+  service?: Service,
+  serviceLine?: ServiceLine
+): BillingCycleConfig | null {
+  // Prioridad 1: ServiceLine
+  if (serviceLine?.billingCycleDay && serviceLine?.billingDueDay) {
+    return {
+      billingCycleDay: serviceLine.billingCycleDay,
+      billingDueDay: serviceLine.billingDueDay,
+    };
+  }
+
+  // Prioridad 2: Service (fallback para datos legacy)
+  if (service?.billingCycleDay && service?.billingDueDay) {
+    return {
+      billingCycleDay: service.billingCycleDay,
+      billingDueDay: service.billingDueDay,
+    };
+  }
+
+  return null;
+}
 
 /**
  * Obtiene el primer y último día del mes actual
@@ -114,18 +148,14 @@ function getLastDayOfMonth(date: Date): number {
 }
 
 /**
- * Calcula la fecha de vencimiento para un servicio con ciclo de facturación
- * Similar a la lógica de tarjetas de crédito
+ * Calcula la fecha de vencimiento para un ciclo de facturación usando la configuración
+ * (función interna)
  */
-export function getBillingCycleDueDate(
-  service: Service,
+function _getBillingCycleDueDateFromConfig(
+  config: BillingCycleConfig,
   referenceDate: Date = new Date()
-): Date | null {
-  if (service.serviceType !== 'billing_cycle' || !service.billingCycleDay || !service.billingDueDay) {
-    return null;
-  }
-
-  const { billingCycleDay, billingDueDay } = service;
+): Date {
+  const { billingCycleDay, billingDueDay } = config;
   const today = new Date(referenceDate);
   today.setHours(0, 0, 0, 0);
 
@@ -170,6 +200,26 @@ export function getBillingCycleDueDate(
   const adjustedDueDay = Math.min(billingDueDay, lastDay);
 
   return new Date(dueDateYear, dueDateMonth, adjustedDueDay);
+}
+
+/**
+ * Calcula la fecha de vencimiento para un servicio con ciclo de facturación
+ * Similar a la lógica de tarjetas de crédito
+ * Ahora soporta ServiceLine para múltiples líneas por servicio
+ */
+export function getBillingCycleDueDate(
+  service: Service,
+  referenceDate: Date = new Date(),
+  serviceLine?: ServiceLine
+): Date | null {
+  // Obtener configuración priorizando ServiceLine
+  const config = getBillingCycleConfig(service, serviceLine);
+
+  if (!config || service.serviceType !== 'billing_cycle') {
+    return null;
+  }
+
+  return _getBillingCycleDueDateFromConfig(config, referenceDate);
 }
 
 /**
@@ -220,16 +270,21 @@ export function getBillingCycleCutoffDate(
 
 /**
  * Genera instancias para servicios con ciclo de facturación
+ * Ahora soporta ServiceLine para múltiples líneas por servicio
  */
 export function generateBillingCycleInstances(
   scheduledPayment: ScheduledPayment,
   service: Service,
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  serviceLine?: ServiceLine
 ): Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] {
   const instances: Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] = [];
 
-  if (service.serviceType !== 'billing_cycle' || !service.billingDueDay) {
+  // Obtener configuración de ciclo (ServiceLine tiene prioridad)
+  const config = getBillingCycleConfig(service, serviceLine);
+
+  if (service.serviceType !== 'billing_cycle' || !config) {
     return instances;
   }
 
@@ -237,7 +292,7 @@ export function generateBillingCycleInstances(
   let currentDate = new Date(startDate);
 
   while (currentDate <= endDate) {
-    const dueDate = getBillingCycleDueDate(service, currentDate);
+    const dueDate = getBillingCycleDueDate(service, currentDate, serviceLine);
 
     if (!dueDate || dueDate > endDate) {
       // Avanzar al siguiente mes
@@ -258,6 +313,7 @@ export function generateBillingCycleInstances(
         status: 'pending',
         cardId: scheduledPayment.cardId,
         serviceId: scheduledPayment.serviceId,
+        serviceLineId: scheduledPayment.serviceLineId, // Incluir línea de servicio
         createdBy: scheduledPayment.createdBy,
         createdByName: scheduledPayment.createdByName,
         updatedBy: scheduledPayment.updatedBy,
