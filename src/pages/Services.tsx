@@ -119,19 +119,45 @@ export function Services() {
 
     setSaving(true);
     try {
+      // Filtrar campos undefined para evitar error de Firestore
+      const dataToSave: Record<string, unknown> = {
+        name: formData.name,
+        paymentMethod: formData.paymentMethod,
+        serviceType: formData.serviceType,
+      };
+
+      // Solo agregar campos de ciclo de facturación si tienen valor
+      if (formData.billingCycleDay !== undefined) {
+        dataToSave.billingCycleDay = formData.billingCycleDay;
+      }
+      if (formData.billingDueDay !== undefined) {
+        dataToSave.billingDueDay = formData.billingDueDay;
+      }
+
       if (editingService) {
-        // Update
-        await updateDoc(doc(db, 'services', editingService.id), {
-          ...formData,
-          updatedAt: serverTimestamp(),
-          updatedBy: currentUser.id,
-          updatedByName: currentUser.name,
-        });
+        // Update - si el servicio cambió a tipo fijo, eliminar campos de ciclo
+        if (formData.serviceType === 'fixed') {
+          await updateDoc(doc(db, 'services', editingService.id), {
+            ...dataToSave,
+            billingCycleDay: null,
+            billingDueDay: null,
+            updatedAt: serverTimestamp(),
+            updatedBy: currentUser.id,
+            updatedByName: currentUser.name,
+          });
+        } else {
+          await updateDoc(doc(db, 'services', editingService.id), {
+            ...dataToSave,
+            updatedAt: serverTimestamp(),
+            updatedBy: currentUser.id,
+            updatedByName: currentUser.name,
+          });
+        }
         toast.success('Servicio actualizado exitosamente');
       } else {
         // Create
         await addDoc(collection(db, 'services'), {
-          ...formData,
+          ...dataToSave,
           userId: currentUser.id, // Mantener por compatibilidad
           householdId: currentUser.householdId,
           createdAt: serverTimestamp(),
