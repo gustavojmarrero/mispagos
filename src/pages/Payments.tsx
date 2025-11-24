@@ -15,7 +15,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServices } from '@/hooks/useServices';
 import { useBanks } from '@/hooks/useBanks';
-import { generateCurrentAndNextMonthInstances } from '@/lib/paymentInstances';
+import { generateCurrentAndNextMonthInstances, updateExistingInstances } from '@/lib/paymentInstances';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -310,6 +310,20 @@ export function Payments() {
         const selectedService = savedPayment.frequency === 'billing_cycle' && savedPayment.serviceId
           ? services.find(s => s.id === savedPayment.serviceId)
           : undefined;
+
+        // Si es una edición, actualizar las instancias existentes primero
+        if (editingPayment) {
+          console.log('[Payments] Actualizando instancias existentes...');
+          await updateExistingInstances(
+            savedPayment,
+            currentUser.id,
+            currentUser.name,
+            selectedService
+          );
+          console.log('[Payments] Instancias existentes actualizadas');
+        }
+
+        // Luego generar nuevas instancias si faltan
         await generateCurrentAndNextMonthInstances(savedPayment, selectedService);
         console.log('[Payments] Instancias generadas exitosamente');
       } catch (instanceError) {

@@ -4,6 +4,8 @@ import {
   where,
   getDocs,
   addDoc,
+  updateDoc,
+  doc,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
@@ -534,4 +536,133 @@ export async function ensureMonthlyInstances(
       await generateCurrentAndNextMonthInstances(scheduledPayment, service);
     }
   }
+}
+
+/**
+ * Actualiza las instancias existentes cuando se edita un pago programado
+ * Preserva los pagos parciales y recalcula el monto restante
+ * @param scheduledPayment El pago programado actualizado
+ * @param updatedBy Usuario que realiza la actualización
+ * @param updatedByName Nombre del usuario que realiza la actualización
+ * @param service El servicio asociado (opcional, para billing_cycle)
+ */
+export async function updateExistingInstances(
+  scheduledPayment: ScheduledPayment,
+  updatedBy: string,
+  updatedByName: string,
+  service?: Service
+): Promise<void> {
+  console.log('[PaymentInstances] 🔄 Actualizando instancias existentes para:', scheduledPayment.id);
+
+  // Obtener todas las instancias existentes del pago programado
+  const existingInstances = await getExistingInstances(
+    scheduledPayment.householdId,
+    scheduledPayment.id
+  );
+
+  console.log(`[PaymentInstances] 📋 Encontradas ${existingInstances.length} instancias`);
+
+  // Generar las fechas esperadas para el pago programado
+  const currentMonth = getCurrentMonthRange();
+  const nextMonth = getNextMonthRange();
+
+  let expectedInstances: Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] = [];
+
+  if (scheduledPayment.frequency === 'billing_cycle' && service?.serviceType === 'billing_cycle') {
+    const currentMonthInstances = generateBillingCycleInstances(
+      scheduledPayment,
+      service,
+      currentMonth.start,
+      currentMonth.end
+    );
+    const nextMonthInstances = generateBillingCycleInstances(
+      scheduledPayment,
+      service,
+      nextMonth.start,
+      nextMonth.end
+    );
+    expectedInstances = [...currentMonthInstances, ...nextMonthInstances];
+  } else {
+    const currentMonthInstances = generateInstancesForDateRange(
+      scheduledPayment,
+      currentMonth.start,
+      currentMonth.end
+    );
+    const nextMonthInstances = generateInstancesForDateRange(
+      scheduledPayment,
+      nextMonth.start,
+      nextMonth.end
+    );
+    expectedInstances = [...currentMonthInstances, ...nextMonthInstances];
+  }
+
+  // Actualizar instancias existentes que estén pending o partial
+  for (const existingInstance of existingInstances) {
+    // Solo actualizar instancias que no estén pagadas o canceladas
+    if (existingInstance.status === 'paid' || existingInstance.status === 'cancelled') {
+      console.log(`[PaymentInstances] ⏭️ Saltando instancia ${existingInstance.id} (estado: ${existingInstance.status})`);
+      continue;
+    }
+
+    // Buscar la fecha esperada correspondiente a esta instancia
+    // Intentamos encontrar una instancia esperada que coincida con la fecha actual o que sea cercana
+    const expectedInstance = expectedInstances.find(exp => {
+      const timeDiff = Math.abs(exp.dueDate.getTime() - existingInstance.dueDate.getTime());
+      // Permitir hasta 5 días de diferencia para considerar que es la misma instancia
+      return timeDiff <= 5 * 24 * 60 * 60 * 1000;
+    });
+
+    if (!expectedInstance) {
+      console.log(`[PaymentInstances] ⚠️ No se encontró instancia esperada para ${existingInstance.id}, saltando`);
+      continue;
+    }
+
+    // Calcular suma de pagos parciales si existen
+    const partialPaymentsSum = existingInstance.partialPayments?.reduce(
+      (sum, payment) => sum + payment.amount,
+      0
+    ) || 0;
+
+    // Calcular nuevo remainingAmount
+    const newRemainingAmount = scheduledPayment.amount - partialPaymentsSum;
+
+    // Preparar actualización
+    const updates: any = {
+      amount: scheduledPayment.amount,
+      description: scheduledPayment.description,
+      updatedAt: serverTimestamp(),
+      updatedBy,
+      updatedByName,
+    };
+
+    // Actualizar dueDate si cambió
+    if (expectedInstance.dueDate.getTime() !== existingInstance.dueDate.getTime()) {
+      updates.dueDate = Timestamp.fromDate(expectedInstance.dueDate);
+      console.log(`[PaymentInstances] 📅 Actualizando fecha de ${existingInstance.dueDate.toISOString()} a ${expectedInstance.dueDate.toISOString()}`);
+    }
+
+    // Actualizar remainingAmount si hay pagos parciales
+    if (existingInstance.status === 'partial' && partialPaymentsSum > 0) {
+      updates.remainingAmount = newRemainingAmount;
+      console.log(`[PaymentInstances] 💰 Recalculando remainingAmount: ${scheduledPayment.amount} - ${partialPaymentsSum} = ${newRemainingAmount}`);
+
+      // Si el nuevo remainingAmount es <= 0, marcar como pagado
+      if (newRemainingAmount <= 0) {
+        updates.status = 'paid';
+        updates.paidAmount = scheduledPayment.amount;
+        updates.paidDate = serverTimestamp();
+        console.log(`[PaymentInstances] ✅ Instancia ${existingInstance.id} marcada como pagada (monto ajustado)`);
+      }
+    }
+
+    try {
+      await updateDoc(doc(db, 'payment_instances', existingInstance.id), updates);
+      console.log(`[PaymentInstances] ✅ Instancia ${existingInstance.id} actualizada exitosamente`);
+    } catch (error) {
+      console.error(`[PaymentInstances] ❌ Error actualizando instancia ${existingInstance.id}:`, error);
+      throw error;
+    }
+  }
+
+  console.log('[PaymentInstances] 🎉 Actualización de instancias completada');
 }

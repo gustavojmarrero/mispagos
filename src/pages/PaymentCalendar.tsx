@@ -23,6 +23,16 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -841,52 +851,52 @@ export function PaymentCalendar() {
       </Card>
 
       {/* Adjust Modal */}
-      {showAdjustModal && editingInstance && (
-        <Card className="border-primary">
-          <CardHeader>
-            <CardTitle>Ajustar Monto</CardTitle>
-            <CardDescription>{editingInstance.description}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="adjustAmount">Nuevo Monto *</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
-                  $
-                </span>
-                <Input
-                  id="adjustAmount"
-                  type="text"
-                  value={adjustAmount}
-                  onChange={(e) => setAdjustAmount(e.target.value)}
-                  onFocus={(e) => setTimeout(() => e.target.select(), 0)}
-                  placeholder="0.00"
-                  className="pl-7"
-                />
+      <AlertDialog open={showAdjustModal} onOpenChange={setShowAdjustModal}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ajustar Monto</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4 pt-4">
+                <p className="text-sm text-muted-foreground">{editingInstance?.description}</p>
+
+                <div className="space-y-2">
+                  <Label htmlFor="adjustAmount">Nuevo Monto *</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                      $
+                    </span>
+                    <Input
+                      id="adjustAmount"
+                      type="text"
+                      value={adjustAmount}
+                      onChange={(e) => setAdjustAmount(e.target.value)}
+                      onFocus={(e) => setTimeout(() => e.target.select(), 0)}
+                      placeholder="0.00"
+                      className="pl-7"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="adjustNotes">Notas (opcional)</Label>
+                  <Input
+                    id="adjustNotes"
+                    value={adjustNotes}
+                    onChange={(e) => setAdjustNotes(e.target.value)}
+                    placeholder="Ej: Faltó un día"
+                  />
+                </div>
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="adjustNotes">Notas (opcional)</Label>
-              <Input
-                id="adjustNotes"
-                value={adjustNotes}
-                onChange={(e) => setAdjustNotes(e.target.value)}
-                placeholder="Ej: Faltó un día"
-              />
-            </div>
-
-            <div className="flex flex-col sm:flex-row justify-end gap-2">
-              <Button variant="outline" onClick={() => setShowAdjustModal(false)} className="w-full sm:w-auto">
-                Cancelar
-              </Button>
-              <Button onClick={handleSaveAdjustment} className="w-full sm:w-auto">
-                Guardar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSaveAdjustment}>
+              Guardar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Partial Payment Modal */}
       {showPartialPaymentModal && editingInstance && (
