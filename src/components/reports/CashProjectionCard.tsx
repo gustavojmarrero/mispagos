@@ -1,12 +1,21 @@
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Wallet, Calendar } from 'lucide-react';
-import type { CashProjection } from '@/lib/reportsMetrics';
+import { Wallet, Calendar, ExternalLink } from 'lucide-react';
+import type { CashProjection, WeeklyProjection } from '@/lib/reportsMetrics';
 
 interface CashProjectionCardProps {
   data: CashProjection;
 }
 
 export function CashProjectionCard({ data }: CashProjectionCardProps) {
+  const navigate = useNavigate();
+
+  const handleWeekClick = (week: WeeklyProjection) => {
+    const startDate = week.startDate.toISOString().split('T')[0];
+    const endDate = week.endDate.toISOString().split('T')[0];
+    navigate(`/calendar?startDate=${startDate}&endDate=${endDate}`);
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('es-MX', {
       style: 'currency',
@@ -22,7 +31,7 @@ export function CashProjectionCard({ data }: CashProjectionCardProps) {
   };
 
   return (
-    <Card>
+    <Card className="lg:col-span-2">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Wallet className="h-5 w-5 text-primary" />
@@ -46,14 +55,19 @@ export function CashProjectionCard({ data }: CashProjectionCardProps) {
             <h4 className="text-sm font-semibold">Desglose Semanal</h4>
           </div>
 
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {data.weeks.map((week) => (
             <div
               key={week.weekNumber}
-              className="rounded-lg border border-border p-4 space-y-3 hover:bg-muted/50 transition-colors"
+              onClick={() => handleWeekClick(week)}
+              className="rounded-lg border border-border p-4 space-y-3 hover:bg-muted/50 hover:border-primary/50 transition-colors cursor-pointer group"
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-semibold">Semana {week.weekNumber}</p>
+                  <p className="text-sm font-semibold flex items-center gap-1">
+                    Semana {week.weekNumber}
+                    <ExternalLink className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {formatDateRange(week.startDate, week.endDate)}
                   </p>
@@ -96,6 +110,7 @@ export function CashProjectionCard({ data }: CashProjectionCardProps) {
               )}
             </div>
           ))}
+        </div>
         </div>
 
         {data.next30Days === 0 && (

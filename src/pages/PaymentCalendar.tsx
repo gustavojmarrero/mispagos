@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   collection,
   query,
@@ -67,6 +68,7 @@ type TimeFilter = 'all' | 'this_week' | 'next_week' | 'this_month' | 'next_month
 export function PaymentCalendar() {
   const { currentUser } = useAuth();
   const { services } = useServices();
+  const [searchParams] = useSearchParams();
   const [instances, setInstances] = useState<PaymentInstance[]>([]);
   const [cards, setCards] = useState<CardType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,6 +90,17 @@ export function PaymentCalendar() {
     fetchInstances();
     fetchCards();
   }, [currentUser]);
+
+  // Leer query params para filtro de fechas (navegación desde Reports)
+  useEffect(() => {
+    const startParam = searchParams.get('startDate');
+    const endParam = searchParams.get('endDate');
+    if (startParam && endParam) {
+      setCustomStartDate(new Date(startParam));
+      setCustomEndDate(new Date(endParam));
+      setTimeFilter('custom');
+    }
+  }, [searchParams]);
 
   const fetchCards = async () => {
     if (!currentUser) return;
