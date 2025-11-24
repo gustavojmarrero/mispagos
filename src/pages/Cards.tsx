@@ -9,6 +9,8 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
+  arrayUnion,
+  getDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -23,6 +25,7 @@ import { InputWithCopy } from '@/components/ui/input-with-copy';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { CardSkeletonGrid } from '@/components/CardSkeleton';
 import {
   formatCurrencyInput,
@@ -34,7 +37,7 @@ import {
   formatCLABE,
   unformatCLABE,
 } from '@/lib/utils';
-import type { Card as CardType, CardFormData, CardOwner } from '@/lib/types';
+import type { Card as CardType, CardFormData, CardOwner, PaymentInstance, PartialPayment, PaymentStatus } from '@/lib/types';
 import {
   CreditCard,
   Plus,
@@ -47,6 +50,8 @@ import {
   Loader2,
   MessageSquare,
   Copy,
+  Check,
+  Trash2,
 } from 'lucide-react';
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { Pagination } from '@/components/ui/pagination';
@@ -113,6 +118,16 @@ export function Cards() {
     return saved ? parseInt(saved) : 12;
   });
 
+  // Estados para payment instances
+  const [cardPayments, setCardPayments] = useState<PaymentInstance[]>([]);
+  const [loadingPayments, setLoadingPayments] = useState(false);
+
+  // Estados para modales de pago
+  const [showPartialPaymentModal, setShowPartialPaymentModal] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<PaymentInstance | null>(null);
+  const [partialAmount, setPartialAmount] = useState('');
+  const [partialNotes, setPartialNotes] = useState('');
+
   useEffect(() => {
     fetchCards();
   }, [currentUser]);
@@ -154,6 +169,291 @@ export function Cards() {
       console.error('Error fetching cards:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const getStatusBadge = (status: PaymentStatus) => {
+    const variants: Record<PaymentStatus, { variant: 'default' | 'secondary' | 'destructive', label: string }> = {
+      pending: { variant: 'default', label: 'Pendiente' },
+      partial: { variant: 'default', label: 'Parcial' },
+      paid: { variant: 'secondary', label: 'Pagado' },
+      overdue: { variant: 'destructive', label: 'Vencido' },
+      cancelled: { variant: 'secondary', label: 'Cancelado' },
+    };
+
+    const config = variants[status];
+    return (
+      <Badge
+        variant={config.variant}
+        className={status === 'partial' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+      >
+        {config.label}
+      </Badge>
+    );
+  };
+
+  const updateCardAvailableCredit = async (
+    cardId: string,
+    amount: number,
+    operation: 'add' | 'subtract'
+  ) => {
+    if (!currentUser) return;
+
+    try {
+      const cardRef = doc(db, 'cards', cardId);
+      const cardSnap = await getDoc(cardRef);
+
+      if (!cardSnap.exists()) {
+        console.error('Card not found:', cardId);
+        return;
+      }
+
+      const cardData = cardSnap.data() as CardType;
+      const currentAvailable = cardData.availableCredit || 0;
+      const creditLimit = cardData.creditLimit || 0;
+
+      // Calcular nuevo disponible
+      const newAvailableCredit = operation === 'add'
+        ? currentAvailable + amount
+        : currentAvailable - amount;
+
+      // Calcular nuevo balance (límite - disponible)
+      const newCurrentBalance = creditLimit - newAvailableCredit;
+
+      await updateDoc(cardRef, {
+        availableCredit: newAvailableCredit,
+        currentBalance: newCurrentBalance,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
+      });
+
+      // Actualizar estado local
+      setCards(prevCards =>
+        prevCards.map(card =>
+          card.id === cardId
+            ? { ...card, availableCredit: newAvailableCredit, currentBalance: newCurrentBalance }
+            : card
+        )
+      );
+
+      // Si viewingCard es la tarjeta actual, actualizarla también
+      if (viewingCard?.id === cardId) {
+        setViewingCard(prev => prev ? {
+          ...prev,
+          availableCredit: newAvailableCredit,
+          currentBalance: newCurrentBalance
+        } : null);
+      }
+    } catch (error) {
+      console.error('Error updating card available credit:', error);
+    }
+  };
+
+  const fetchCardPayments = async (cardId: string) => {
+    if (!currentUser) return;
+
+    setLoadingPayments(true);
+    try {
+      // Obtener solo pagos vinculados a la tarjeta específica
+      const paymentsQuery = query(
+        collection(db, 'payment_instances'),
+        where('householdId', '==', currentUser.householdId),
+        where('cardId', '==', cardId),
+        where('paymentType', '==', 'card_payment')
+      );
+
+      const snapshot = await getDocs(paymentsQuery);
+      const paymentsData = snapshot.docs.map((doc) => ({
+        ...doc.data(),
+        id: doc.id,
+        dueDate: doc.data().dueDate?.toDate() || new Date(),
+        paidDate: doc.data().paidDate?.toDate(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+      })) as PaymentInstance[];
+
+      // Ordenar por fecha (próximos primero)
+      paymentsData.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+
+      setCardPayments(paymentsData);
+    } catch (error) {
+      console.error('Error fetching card payments:', error);
+      toast.error('Error al cargar pagos de la tarjeta');
+    } finally {
+      setLoadingPayments(false);
+    }
+  };
+
+  const handleMarkAsPaid = async (instance: PaymentInstance) => {
+    if (!currentUser) return;
+
+    try {
+      // Calcular el monto que se está pagando ahora
+      const amountBeingPaid = instance.remainingAmount ?? instance.amount;
+
+      await updateDoc(doc(db, 'payment_instances', instance.id), {
+        status: 'paid',
+        paidDate: serverTimestamp(),
+        paidAmount: instance.amount,
+        remainingAmount: 0,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
+      });
+
+      // Actualizar el disponible de la tarjeta
+      if (instance.cardId) {
+        await updateCardAvailableCredit(instance.cardId, amountBeingPaid, 'add');
+      }
+
+      toast.success('Pago marcado como realizado');
+
+      // Recargar pagos de la tarjeta
+      if (viewingCard) {
+        await fetchCardPayments(viewingCard.id);
+      }
+    } catch (error) {
+      console.error('Error marking as paid:', error);
+      toast.error('Error al marcar como pagado');
+    }
+  };
+
+  const handleOpenPartialPayment = (instance: PaymentInstance) => {
+    setEditingPayment(instance);
+    setPartialAmount('');
+    setPartialNotes('');
+    setShowPartialPaymentModal(true);
+  };
+
+  const handleSavePartialPayment = async () => {
+    if (!currentUser) return;
+    if (!editingPayment) return;
+
+    const amountToPay = parseCurrencyInput(partialAmount);
+    if (amountToPay <= 0) {
+      toast.error('El monto debe ser mayor a 0');
+      return;
+    }
+
+    const currentRemaining = editingPayment.remainingAmount ?? editingPayment.amount;
+    const currentPaid = editingPayment.paidAmount ?? 0;
+
+    if (amountToPay > currentRemaining) {
+      toast.error(`El monto excede lo pendiente (${formatCurrency(currentRemaining)})`);
+      return;
+    }
+
+    try {
+      // Crear registro de pago parcial
+      const newPartialPayment: PartialPayment = {
+        id: crypto.randomUUID(),
+        amount: amountToPay,
+        paidDate: Date.now(),
+        notes: partialNotes || undefined,
+        paidBy: currentUser.id,
+        paidByName: currentUser.name,
+      };
+
+      // Calcular nuevos valores
+      const newPaidAmount = currentPaid + amountToPay;
+      const newRemainingAmount = editingPayment.amount - newPaidAmount;
+      const isFullyPaid = newRemainingAmount === 0;
+
+      // Actualizar en Firestore
+      await updateDoc(doc(db, 'payment_instances', editingPayment.id), {
+        status: isFullyPaid ? 'paid' : 'partial',
+        paidAmount: newPaidAmount,
+        remainingAmount: newRemainingAmount,
+        partialPayments: arrayUnion(newPartialPayment),
+        paidDate: isFullyPaid ? serverTimestamp() : editingPayment.paidDate || null,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
+      });
+
+      // Actualizar el disponible de la tarjeta
+      if (editingPayment.cardId) {
+        await updateCardAvailableCredit(editingPayment.cardId, amountToPay, 'add');
+      }
+
+      toast.success(
+        isFullyPaid
+          ? 'Pago completado'
+          : `Pago parcial registrado: ${formatCurrency(amountToPay)}`
+      );
+
+      setShowPartialPaymentModal(false);
+      setEditingPayment(null);
+      setPartialAmount('');
+      setPartialNotes('');
+
+      // Recargar pagos de la tarjeta
+      if (viewingCard) {
+        await fetchCardPayments(viewingCard.id);
+      }
+    } catch (error) {
+      console.error('Error saving partial payment:', error);
+      toast.error('Error al registrar el pago parcial');
+    }
+  };
+
+  const handleDeletePartialPayment = async (instance: PaymentInstance, paymentId: string) => {
+    if (!currentUser) return;
+    if (!confirm('¿Eliminar este pago parcial?')) return;
+
+    const partialPayments = instance.partialPayments || [];
+    const payment = partialPayments.find(p => p.id === paymentId);
+    if (!payment) return;
+
+    try {
+      // Filtrar el array de pagos parciales
+      const updatedPartialPayments = partialPayments
+        .filter(p => p.id !== paymentId)
+        .map(p => {
+          const cleanPayment: any = {
+            id: p.id,
+            amount: p.amount,
+            paidDate: typeof p.paidDate === 'number' ? p.paidDate : Date.now(),
+            paidBy: p.paidBy,
+            paidByName: p.paidByName,
+          };
+          if (p.notes !== undefined) {
+            cleanPayment.notes = p.notes;
+          }
+          return cleanPayment;
+        });
+
+      const newPaidAmount = (instance.paidAmount || 0) - payment.amount;
+      const newRemainingAmount = instance.amount - newPaidAmount;
+
+      // Actualizar el documento
+      const docRef = doc(db, 'payment_instances', instance.id);
+      await updateDoc(docRef, {
+        status: newPaidAmount === 0 ? 'pending' : 'partial',
+        paidAmount: newPaidAmount === 0 ? null : newPaidAmount,
+        remainingAmount: newRemainingAmount,
+        partialPayments: updatedPartialPayments,
+        paidDate: newPaidAmount === 0 ? null : instance.paidDate,
+        updatedAt: serverTimestamp(),
+        updatedBy: currentUser.id,
+        updatedByName: currentUser.name,
+      });
+
+      // Revertir el disponible de la tarjeta
+      if (instance.cardId) {
+        await updateCardAvailableCredit(instance.cardId, payment.amount, 'subtract');
+      }
+
+      toast.success('Pago parcial eliminado');
+
+      // Recargar pagos de la tarjeta
+      if (viewingCard) {
+        await fetchCardPayments(viewingCard.id);
+      }
+    } catch (error: any) {
+      console.error('Error deleting partial payment:', error);
+      toast.error('Error al eliminar el pago parcial');
     }
   };
 
@@ -396,6 +696,15 @@ export function Cards() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, sortBy]);
+
+  // Cargar pagos cuando se abre el Sheet de detalles de tarjeta
+  useEffect(() => {
+    if (viewingCard) {
+      fetchCardPayments(viewingCard.id);
+    } else {
+      setCardPayments([]);
+    }
+  }, [viewingCard]);
 
   // Handlers con persistencia
   const handleViewModeChange = (mode: ViewMode) => {
@@ -1040,6 +1349,172 @@ export function Cards() {
                     </div>
                   </div>
                 )}
+
+                {/* Pagos Programados */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-muted-foreground">Pagos Programados</h4>
+                    <Badge variant="secondary">{cardPayments.length}</Badge>
+                  </div>
+
+                  {loadingPayments ? (
+                    <div className="flex justify-center py-4">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    </div>
+                  ) : cardPayments.length === 0 ? (
+                    <div className="bg-muted/50 p-4 rounded-lg text-center">
+                      <p className="text-sm text-muted-foreground">No hay pagos programados para esta tarjeta</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {cardPayments.map((payment) => (
+                        <div
+                          key={payment.id}
+                          className={`border rounded-lg p-3 transition-all ${
+                            payment.status === 'paid' ? 'bg-muted/50 opacity-70' : ''
+                          } ${payment.status === 'partial' ? 'border-blue-400 bg-blue-50/30' : ''}`}
+                        >
+                          <div className="space-y-2">
+                            {/* Encabezado del pago */}
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <h5 className="font-semibold text-sm break-words">{payment.description}</h5>
+                                <p className="text-xs text-muted-foreground">
+                                  {payment.dueDate.toLocaleDateString('es-ES')}
+                                </p>
+                                {payment.notes && (
+                                  <p className="text-xs text-muted-foreground italic mt-1">
+                                    📝 {payment.notes}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="text-right flex-shrink-0">
+                                <p className="font-semibold text-sm">{formatCurrency(payment.amount)}</p>
+                                {getStatusBadge(payment.status)}
+                              </div>
+                            </div>
+
+                            {/* Progress bar para pagos parciales */}
+                            {payment.status === 'partial' && (payment.paidAmount || 0) > 0 && (
+                              <div className="bg-white rounded-lg p-2 border border-blue-200">
+                                <div className="flex justify-between text-xs mb-1">
+                                  <span className="text-muted-foreground">Progreso</span>
+                                  <span className="font-semibold text-blue-600">
+                                    {Math.round(((payment.paidAmount || 0) / payment.amount) * 100)}%
+                                  </span>
+                                </div>
+                                <Progress
+                                  value={((payment.paidAmount || 0) / payment.amount) * 100}
+                                  className="h-1.5 mb-1"
+                                />
+                                <div className="flex justify-between text-xs">
+                                  <span className="text-green-600 font-medium">
+                                    {formatCurrency(payment.paidAmount || 0)}
+                                  </span>
+                                  <span className="text-blue-600 font-medium">
+                                    {formatCurrency(payment.remainingAmount || 0)}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Historial de pagos parciales */}
+                            {payment.partialPayments && payment.partialPayments.length > 0 && (
+                              <div className="bg-muted/30 rounded-lg p-2 border">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-xs font-semibold">Historial de abonos</span>
+                                  <Badge variant="secondary" className="text-xs h-5">
+                                    {payment.partialPayments.length}
+                                  </Badge>
+                                </div>
+                                <div className="space-y-1">
+                                  {payment.partialPayments.map((partial) => (
+                                    <div
+                                      key={partial.id}
+                                      className="flex items-center justify-between text-xs bg-white rounded p-2 border"
+                                    >
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-semibold text-green-600">
+                                          {formatCurrency(partial.amount)}
+                                        </p>
+                                        <p className="text-muted-foreground text-xs">
+                                          {new Date(partial.paidDate).toLocaleDateString('es-ES')}
+                                          {' • '}{partial.paidByName}
+                                        </p>
+                                        {partial.notes && (
+                                          <p className="text-muted-foreground italic text-xs mt-1">
+                                            {partial.notes}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDeletePartialPayment(payment, partial.id)}
+                                        className="h-6 w-6 p-0 ml-2 flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Botones de acción */}
+                            {(payment.status === 'pending' || payment.status === 'partial') && (
+                              <div className="flex gap-2 pt-2">
+                                {payment.status === 'pending' ? (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleMarkAsPaid(payment)}
+                                      className="flex-1 h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    >
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Pagado
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleOpenPartialPayment(payment)}
+                                      className="flex-1 h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    >
+                                      <Plus className="h-3 w-3 mr-1" />
+                                      Parcial
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleOpenPartialPayment(payment)}
+                                      className="flex-1 h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    >
+                                      <Plus className="h-3 w-3 mr-1" />
+                                      Abonar más
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleMarkAsPaid(payment)}
+                                      className="flex-1 h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                    >
+                                      <Check className="h-3 w-3 mr-1" />
+                                      Completar
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <SheetFooter className="mt-6">
@@ -1051,6 +1526,107 @@ export function Cards() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Modal de Pago Parcial */}
+      {showPartialPaymentModal && editingPayment && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-md border-blue-600 shadow-lg">
+            <CardHeader className="bg-gradient-to-r from-blue-500/10 to-transparent">
+              <CardTitle className="flex items-center gap-2">
+                <Plus className="h-5 w-5 text-blue-600" />
+                Registrar Pago Parcial
+              </CardTitle>
+              <CardDescription>{editingPayment.description}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 pt-4">
+              {/* Información del pago */}
+              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Monto total:</span>
+                  <span className="font-semibold">{formatCurrency(editingPayment.amount)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Pagado hasta ahora:</span>
+                  <span className="font-semibold text-green-600">
+                    {formatCurrency(editingPayment.paidAmount || 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Restante:</span>
+                  <span className="font-semibold text-blue-600">
+                    {formatCurrency(editingPayment.remainingAmount ?? editingPayment.amount)}
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                {(editingPayment.paidAmount || 0) > 0 && (
+                  <div className="mt-3">
+                    <Progress
+                      value={((editingPayment.paidAmount || 0) / editingPayment.amount) * 100}
+                      className="h-2"
+                    />
+                    <p className="text-xs text-muted-foreground text-center mt-1">
+                      {Math.round(((editingPayment.paidAmount || 0) / editingPayment.amount) * 100)}% completado
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Form */}
+              <div className="space-y-2">
+                <Label htmlFor="partialAmount">Monto a abonar *</Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                    $
+                  </span>
+                  <Input
+                    id="partialAmount"
+                    type="text"
+                    value={partialAmount}
+                    onChange={(e) => setPartialAmount(e.target.value)}
+                    onFocus={(e) => setTimeout(() => e.target.select(), 0)}
+                    placeholder="0.00"
+                    className="pl-7"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Máximo: {formatCurrency(editingPayment.remainingAmount ?? editingPayment.amount)}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="partialNotes">Notas (opcional)</Label>
+                <Input
+                  id="partialNotes"
+                  value={partialNotes}
+                  onChange={(e) => setPartialNotes(e.target.value)}
+                  placeholder="Ej: Primer abono"
+                />
+              </div>
+
+              <div className="flex flex-col sm:flex-row justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowPartialPaymentModal(false);
+                    setEditingPayment(null);
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleSavePartialPayment}
+                  className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Registrar Abono
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
