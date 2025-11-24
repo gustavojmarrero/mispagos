@@ -37,7 +37,7 @@ import {
   formatCLABE,
   unformatCLABE,
 } from '@/lib/utils';
-import type { Card as CardType, CardFormData, CardOwner, PaymentInstance, PartialPayment, PaymentStatus } from '@/lib/types';
+import type { Card as CardType, CardFormData, CardOwner, PaymentInstance, PaymentStatus } from '@/lib/types';
 import {
   CreditCard,
   Plus,
