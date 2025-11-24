@@ -360,7 +360,9 @@ export function Cards() {
           card.name.toLowerCase().includes(search) ||
           card.lastDigits.includes(search) ||
           getBankName(card.bankId).toLowerCase().includes(search) ||
-          card.owner.toLowerCase().includes(search)
+          card.owner.toLowerCase().includes(search) ||
+          (card.digitalCardNumber && card.digitalCardNumber.includes(search)) ||
+          (card.physicalCardNumber && card.physicalCardNumber.includes(search))
       );
     }
 
