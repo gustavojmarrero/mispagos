@@ -367,59 +367,30 @@ export function Services() {
                 </p>
               </div>
 
-              {/* Campos para servicios con ciclo de facturación */}
+              {/* Líneas de servicio para billing_cycle */}
               {formData.serviceType === 'billing_cycle' && (
                 <div className="space-y-4 p-4 bg-muted/50 rounded-lg border border-muted">
                   <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                     <Calendar className="h-4 w-4" />
-                    <span>Configuración del ciclo de facturación</span>
+                    <span>Líneas / Contratos</span>
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <Label htmlFor="billingCycleDay">Día de corte *</Label>
-                      <Select
-                        value={formData.billingCycleDay?.toString() || ''}
-                        onValueChange={(value) => setFormData({ ...formData, billingCycleDay: parseInt(value) })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Día del mes" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                            <SelectItem key={day} value={day.toString()}>
-                              {day}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Día que llega el recibo/factura
+                  {editingService ? (
+                    <ServiceLineList
+                      service={editingService}
+                      onLinesChange={refetchServiceLines}
+                    />
+                  ) : (
+                    <div className="text-center py-6 bg-background rounded-lg border border-dashed">
+                      <Calendar className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-sm text-muted-foreground">
+                        Guarda el servicio primero
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Después podrás agregar líneas con diferentes ciclos de facturación
                       </p>
                     </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="billingDueDay">Día de vencimiento *</Label>
-                      <Select
-                        value={formData.billingDueDay?.toString() || ''}
-                        onValueChange={(value) => setFormData({ ...formData, billingDueDay: parseInt(value) })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Día del mes" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                            <SelectItem key={day} value={day.toString()}>
-                              {day}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        Fecha límite para pagar
-                      </p>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 

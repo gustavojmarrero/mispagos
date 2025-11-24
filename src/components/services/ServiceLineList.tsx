@@ -137,6 +137,7 @@ export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps
           Líneas de Servicio ({serviceLines.length})
         </h4>
         <Button
+          type="button"
           size="sm"
           variant="outline"
           onClick={() => setShowForm(true)}
@@ -156,6 +157,7 @@ export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps
             Agrega líneas para configurar diferentes ciclos de facturación
           </p>
           <Button
+            type="button"
             size="sm"
             variant="outline"
             className="mt-3"
