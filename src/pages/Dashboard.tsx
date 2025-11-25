@@ -4,11 +4,13 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServices } from '@/hooks/useServices';
 import { useBanks } from '@/hooks/useBanks';
+import { useServiceLines } from '@/hooks/useServiceLines';
 import type { Card as CardType, PaymentInstance, ScheduledPayment } from '@/lib/types';
 import {
   calculateWeeklyCashFlow,
   analyzeCardPeriods,
   analyzeServiceBillingCycles,
+  analyzeServiceLineBillingCycles,
   generateSmartAlerts,
   getNext7DaysTimeline,
 } from '@/lib/dashboardMetrics';
@@ -23,6 +25,7 @@ export function Dashboard() {
   const { currentUser } = useAuth();
   const { services } = useServices();
   const { banks } = useBanks();
+  const { serviceLines } = useServiceLines({ activeOnly: true });
   const [cards, setCards] = useState<CardType[]>([]);
   const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
@@ -121,6 +124,12 @@ export function Dashboard() {
     [services, paymentInstances]
   );
 
+  // Analizar líneas de servicio con ciclo de facturación (similar a tarjetas)
+  const serviceLineBillingAnalysis = useMemo(
+    () => analyzeServiceLineBillingCycles(serviceLines, services, scheduledPayments, paymentInstances),
+    [serviceLines, services, scheduledPayments, paymentInstances]
+  );
+
   const smartAlerts = useMemo(
     () =>
       generateSmartAlerts(
@@ -130,9 +139,10 @@ export function Dashboard() {
         cardPeriods,
         cashFlow,
         banks,
-        serviceBillingAnalysis
+        serviceBillingAnalysis,
+        serviceLineBillingAnalysis
       ),
-    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow, banks, serviceBillingAnalysis]
+    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow, banks, serviceBillingAnalysis, serviceLineBillingAnalysis]
   );
 
   const timeline = useMemo(

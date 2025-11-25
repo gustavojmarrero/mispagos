@@ -1,4 +1,4 @@
-import type { Card, PaymentInstance, ScheduledPayment, Service } from './types';
+import type { Card, PaymentInstance, ScheduledPayment, Service, ServiceLine } from './types';
 
 /**
  * Interfaces para métricas del Dashboard
@@ -47,10 +47,25 @@ export interface ServiceBillingAnalysis {
   };
 }
 
+export interface ServiceLineBillingAnalysis {
+  serviceLine: ServiceLine;
+  service: Service;
+  currentPeriod: {
+    cutoffDate: Date;           // Fecha de corte
+    dueDate: Date;              // Fecha de vencimiento
+    daysUntilDue: number;
+    daysAfterCutoff: number;
+    hasProgrammedPayment: boolean;  // ¿Tiene ScheduledPayment o PaymentInstance?
+    programmedAmount: number;
+    status: 'covered' | 'not_programmed' | 'overdue';
+  };
+}
+
 export type AlertSeverity = 'critical' | 'warning' | 'info';
 export type AlertType =
   | 'card_no_payment'
   | 'service_awaiting_amount'  // Servicio con billing_cycle sin monto después del corte
+  | 'service_line_no_payment'  // Línea de servicio sin pago programado después del corte
   | 'overdue'
   | 'upcoming'
   | 'high_week'
@@ -516,6 +531,110 @@ export function analyzeServiceBillingCycles(
 }
 
 /**
+ * Calcula la fecha de corte para una línea de servicio
+ */
+function getServiceLineCutoffDate(line: ServiceLine, referenceDate: Date): Date {
+  const year = referenceDate.getFullYear();
+  const month = referenceDate.getMonth();
+  const cutoffDate = new Date(year, month, line.billingCycleDay);
+  cutoffDate.setHours(0, 0, 0, 0);
+  return cutoffDate;
+}
+
+/**
+ * Calcula la fecha de vencimiento para una línea de servicio
+ */
+function getServiceLineDueDate(line: ServiceLine, cutoffDate: Date): Date {
+  let dueMonth = cutoffDate.getMonth();
+  let dueYear = cutoffDate.getFullYear();
+
+  // Si dueDay <= cutoffDay, vencimiento es mes siguiente
+  if (line.billingDueDay <= line.billingCycleDay) {
+    dueMonth += 1;
+    if (dueMonth > 11) {
+      dueMonth = 0;
+      dueYear += 1;
+    }
+  }
+
+  const dueDate = new Date(dueYear, dueMonth, line.billingDueDay);
+  dueDate.setHours(23, 59, 59, 999);
+  return dueDate;
+}
+
+/**
+ * Analiza líneas de servicio con ciclo de facturación (similar a tarjetas)
+ */
+export function analyzeServiceLineBillingCycles(
+  serviceLines: ServiceLine[],
+  services: Service[],
+  scheduledPayments: ScheduledPayment[],
+  instances: PaymentInstance[]
+): ServiceLineBillingAnalysis[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Solo líneas activas
+  const activeLines = serviceLines.filter(line => line.isActive);
+
+  return activeLines.map(line => {
+    const service = services.find(s => s.id === line.serviceId);
+
+    // Calcular fechas usando billingCycleDay y billingDueDay de la línea
+    const cutoffDate = getServiceLineCutoffDate(line, today);
+    const dueDate = getServiceLineDueDate(line, cutoffDate);
+
+    // Calcular días
+    const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const daysAfterCutoff = Math.ceil((today.getTime() - cutoffDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    // Buscar pago programado para esta línea (similar a tarjetas)
+    const toleranceMs = 5 * 24 * 60 * 60 * 1000;
+
+    // Buscar en ScheduledPayments
+    const hasScheduledPayment = scheduledPayments.some(sp =>
+      sp.serviceLineId === line.id &&
+      sp.isActive
+    );
+
+    // Buscar en PaymentInstances
+    const lineInstance = instances.find(inst =>
+      inst.serviceLineId === line.id &&
+      inst.dueDate >= new Date(cutoffDate.getTime() - toleranceMs) &&
+      inst.dueDate <= new Date(dueDate.getTime() + toleranceMs) &&
+      (inst.status === 'pending' || inst.status === 'paid' || inst.status === 'partial')
+    );
+
+    const hasProgrammedPayment = hasScheduledPayment || !!lineInstance;
+    const programmedAmount = lineInstance?.amount || 0;
+
+    // Determinar status (igual que tarjetas)
+    let status: 'covered' | 'not_programmed' | 'overdue';
+    if (daysUntilDue < 0) {
+      status = 'overdue';
+    } else if (hasProgrammedPayment) {
+      status = 'covered';
+    } else {
+      status = 'not_programmed';
+    }
+
+    return {
+      serviceLine: line,
+      service: service!,
+      currentPeriod: {
+        cutoffDate,
+        dueDate,
+        daysUntilDue,
+        daysAfterCutoff,
+        hasProgrammedPayment,
+        programmedAmount,
+        status,
+      }
+    };
+  }).filter(analysis => analysis.service); // Filtrar líneas sin servicio asociado
+}
+
+/**
  * Genera alertas inteligentes basadas en el estado del sistema
  */
 export function generateSmartAlerts(
@@ -525,7 +644,8 @@ export function generateSmartAlerts(
   cardPeriods: CardPeriodAnalysis[],
   cashFlow: WeeklyCashFlow,
   banks: { id: string; name: string }[] = [],
-  serviceBillingAnalysis: ServiceBillingAnalysis[] = []
+  serviceBillingAnalysis: ServiceBillingAnalysis[] = [],
+  serviceLineBillingAnalysis: ServiceLineBillingAnalysis[] = []
 ): SmartAlert[] {
   const alerts: SmartAlert[] = [];
   const today = new Date();
@@ -591,6 +711,36 @@ export function generateSmartAlerts(
         label: 'Actualizar monto',
         route: '/calendar',
         params: { serviceId: analysis.service.id, instanceId: analysis.currentPeriod.instanceId },
+      },
+      data: analysis,
+      sortValue: daysAfterCutoff,
+    });
+  });
+
+  // 1b. Alertas de líneas de servicio sin pago programado después del corte
+  const serviceLinesNeedingPayment = serviceLineBillingAnalysis.filter(
+    (analysis) =>
+      analysis.currentPeriod.status === 'not_programmed' &&
+      today > analysis.currentPeriod.cutoffDate
+  );
+
+  serviceLinesNeedingPayment.forEach((analysis) => {
+    const daysAfterCutoff = analysis.currentPeriod.daysAfterCutoff;
+
+    alerts.push({
+      id: `service-line-no-payment-${analysis.serviceLine.id}`,
+      type: 'service_line_no_payment',
+      severity: 'critical',
+      title: `${analysis.service.name} - ${analysis.serviceLine.name} sin pago`,
+      description: `Cortó hace ${daysAfterCutoff} día${daysAfterCutoff !== 1 ? 's' : ''} y no tiene pago programado`,
+      action: {
+        label: 'Programar pago',
+        route: '/payments',
+        params: {
+          serviceId: analysis.service.id,
+          serviceLineId: analysis.serviceLine.id,
+          from: 'dashboard'
+        },
       },
       data: analysis,
       sortValue: daysAfterCutoff,
