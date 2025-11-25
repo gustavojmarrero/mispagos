@@ -281,7 +281,32 @@ export function generateBillingCycleInstances(
 ): Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] {
   const instances: Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] = [];
 
-  // Obtener configuración de ciclo (ServiceLine tiene prioridad)
+  // Si tiene paymentDate específico (seleccionado en formulario), usar esa fecha
+  if (scheduledPayment.paymentDate) {
+    const dueDate = scheduledPayment.paymentDate;
+    if (dueDate >= startDate && dueDate <= endDate) {
+      instances.push({
+        userId: scheduledPayment.userId,
+        householdId: scheduledPayment.householdId,
+        scheduledPaymentId: scheduledPayment.id,
+        paymentType: scheduledPayment.paymentType,
+        dueDate,
+        amount: scheduledPayment.amount || 0,
+        description: scheduledPayment.description,
+        status: 'pending',
+        cardId: scheduledPayment.cardId,
+        serviceId: scheduledPayment.serviceId,
+        serviceLineId: scheduledPayment.serviceLineId,
+        createdBy: scheduledPayment.createdBy,
+        createdByName: scheduledPayment.createdByName,
+        updatedBy: scheduledPayment.updatedBy,
+        updatedByName: scheduledPayment.updatedByName,
+      });
+    }
+    return instances;
+  }
+
+  // Si no tiene paymentDate, calcular automáticamente basado en billingCycleDay/billingDueDay
   const config = getBillingCycleConfig(service, serviceLine);
 
   if (service.serviceType !== 'billing_cycle' || !config) {
@@ -313,7 +338,7 @@ export function generateBillingCycleInstances(
         status: 'pending',
         cardId: scheduledPayment.cardId,
         serviceId: scheduledPayment.serviceId,
-        serviceLineId: scheduledPayment.serviceLineId, // Incluir línea de servicio
+        serviceLineId: scheduledPayment.serviceLineId,
         createdBy: scheduledPayment.createdBy,
         createdByName: scheduledPayment.createdByName,
         updatedBy: scheduledPayment.updatedBy,
