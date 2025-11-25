@@ -206,7 +206,8 @@ export function Payments() {
         setShowForm(true);
 
         // Calcular fecha de vencimiento inicial para billing_cycle
-        const dueDay = selectedService?.billingDueDay || 15;
+        // SOLO si el servicio tiene billingDueDay propio (sin líneas)
+        const dueDay = selectedService?.billingDueDay;
 
         setFormData(prev => ({
           ...prev,
@@ -215,8 +216,8 @@ export function Payments() {
           serviceLineId: serviceLineIdFromUrl || '',
           frequency: isBillingCycle ? 'billing_cycle' : 'monthly',
           amount: isBillingCycle ? 0 : prev.amount,
-          // Pre-cargar fecha de vencimiento para billing_cycle
-          paymentDate: isBillingCycle ? getNextDueDate(dueDay) : prev.paymentDate,
+          // Solo pre-cargar si tiene billingDueDay propio
+          paymentDate: isBillingCycle && dueDay ? getNextDueDate(dueDay) : undefined,
         }));
 
         // Limpiar monto si es billing_cycle
@@ -809,7 +810,8 @@ export function Payments() {
                           const isBillingCycle = selectedService?.serviceType === 'billing_cycle';
 
                           // Calcular fecha de vencimiento inicial para billing_cycle
-                          const dueDay = selectedService?.billingDueDay || 15;
+                          // SOLO si el servicio tiene billingDueDay propio (sin líneas)
+                          const dueDay = selectedService?.billingDueDay;
 
                           setFormData({
                             ...formData,
@@ -819,8 +821,8 @@ export function Payments() {
                             frequency: isBillingCycle ? 'billing_cycle' : formData.frequency,
                             // Monto $0 para billing_cycle (se ingresa después del corte)
                             amount: isBillingCycle ? 0 : formData.amount,
-                            // Pre-cargar fecha de vencimiento para billing_cycle
-                            paymentDate: isBillingCycle ? getNextDueDate(dueDay) : formData.paymentDate,
+                            // Solo pre-cargar si tiene billingDueDay propio
+                            paymentDate: isBillingCycle && dueDay ? getNextDueDate(dueDay) : undefined,
                           });
 
                           // Limpiar monto si es billing_cycle
