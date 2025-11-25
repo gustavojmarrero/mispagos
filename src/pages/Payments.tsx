@@ -93,6 +93,24 @@ const getOrdinal = (num: number): string => {
   return `${num}to`;
 };
 
+// Calcular próxima fecha de vencimiento basada en billingDueDay
+const getNextDueDate = (billingDueDay: number): Date => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const currentMonth = today.getMonth();
+  const currentYear = today.getFullYear();
+
+  // Crear fecha con el día de vencimiento del mes actual
+  let dueDate = new Date(currentYear, currentMonth, billingDueDay);
+
+  // Si ya pasó este mes, usar el siguiente
+  if (dueDate < today) {
+    dueDate = new Date(currentYear, currentMonth + 1, billingDueDay);
+  }
+
+  return dueDate;
+};
+
 export function Payments() {
   const { currentUser } = useAuth();
   const { services } = useServices();
@@ -186,6 +204,10 @@ export function Payments() {
 
         // Abrir formulario y preseleccionar servicio/línea
         setShowForm(true);
+
+        // Calcular fecha de vencimiento inicial para billing_cycle
+        const dueDay = selectedService?.billingDueDay || 15;
+
         setFormData(prev => ({
           ...prev,
           paymentType: 'service_payment',
@@ -193,6 +215,8 @@ export function Payments() {
           serviceLineId: serviceLineIdFromUrl || '',
           frequency: isBillingCycle ? 'billing_cycle' : 'monthly',
           amount: isBillingCycle ? 0 : prev.amount,
+          // Pre-cargar fecha de vencimiento para billing_cycle
+          paymentDate: isBillingCycle ? getNextDueDate(dueDay) : prev.paymentDate,
         }));
 
         // Limpiar monto si es billing_cycle
@@ -277,6 +301,12 @@ export function Payments() {
       return;
     }
 
+    // Validar fecha para servicios billing_cycle
+    if (formData.frequency === 'billing_cycle' && !formData.paymentDate) {
+      toast.error('Selecciona la fecha de vencimiento');
+      return;
+    }
+
     // Validar duplicados para pagos de tarjeta
     if (formData.paymentType === 'card_payment' && formData.cardId && formData.paymentDate) {
       const duplicate = findDuplicateCardPayment(
@@ -308,8 +338,10 @@ export function Payments() {
         serviceLineId: formData.paymentType === 'service_payment' &&
                        formData.frequency === 'billing_cycle' &&
                        formData.serviceLineId ? formData.serviceLineId : null,
-        // Para card_payment: usar paymentDate
-        paymentDate: formData.paymentType === 'card_payment' ? formData.paymentDate : null,
+        // Para card_payment y billing_cycle: usar paymentDate
+        paymentDate: (formData.paymentType === 'card_payment' || formData.frequency === 'billing_cycle')
+          ? formData.paymentDate
+          : null,
         // Para service_payment: usar frequency, dueDay y dayOfWeek
         frequency: formData.paymentType === 'service_payment' ? formData.frequency : null,
         dueDay: formData.paymentType === 'service_payment' && formData.frequency !== 'weekly' ? formData.dueDay : null,
@@ -776,6 +808,9 @@ export function Payments() {
                           const selectedService = services.find(s => s.id === value);
                           const isBillingCycle = selectedService?.serviceType === 'billing_cycle';
 
+                          // Calcular fecha de vencimiento inicial para billing_cycle
+                          const dueDay = selectedService?.billingDueDay || 15;
+
                           setFormData({
                             ...formData,
                             serviceId: value,
@@ -784,6 +819,8 @@ export function Payments() {
                             frequency: isBillingCycle ? 'billing_cycle' : formData.frequency,
                             // Monto $0 para billing_cycle (se ingresa después del corte)
                             amount: isBillingCycle ? 0 : formData.amount,
+                            // Pre-cargar fecha de vencimiento para billing_cycle
+                            paymentDate: isBillingCycle ? getNextDueDate(dueDay) : formData.paymentDate,
                           });
 
                           // Limpiar monto si es billing_cycle
@@ -831,7 +868,16 @@ export function Payments() {
                           </Label>
                           <Select
                             value={formData.serviceLineId}
-                            onValueChange={(value) => setFormData({ ...formData, serviceLineId: value })}
+                            onValueChange={(value) => {
+                              const selectedLine = selectedServiceLines.find(l => l.id === value);
+                              // Actualizar paymentDate con el billingDueDay de la línea seleccionada
+                              const dueDay = selectedLine?.billingDueDay || 15;
+                              setFormData({
+                                ...formData,
+                                serviceLineId: value,
+                                paymentDate: getNextDueDate(dueDay),
+                              });
+                            }}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Selecciona una línea" />
@@ -977,28 +1023,62 @@ export function Payments() {
                     </div>
                   </div>
                 ) : formData.frequency === 'billing_cycle' ? (
-                  // Información para servicios con ciclo de facturación
+                  // Información y DatePicker para servicios con ciclo de facturación
                   <div className="space-y-4">
+                    {/* Información del ciclo de corte */}
                     <div className="p-4 bg-muted/50 rounded-lg border">
-                      <p className="text-sm font-medium mb-2">Ciclo de facturación automático</p>
+                      <p className="text-sm font-medium mb-2">Ciclo de facturación</p>
                       {(() => {
                         const selectedService = services.find(s => s.id === formData.serviceId);
-                        if (selectedService?.billingCycleDay && selectedService?.billingDueDay) {
+                        const selectedLine = selectedServiceLines.find(l => l.id === formData.serviceLineId);
+                        const billingCycleDay = selectedLine?.billingCycleDay || selectedService?.billingCycleDay;
+
+                        if (billingCycleDay) {
                           return (
-                            <div className="grid grid-cols-2 gap-4 mt-3">
-                              <div className="text-center p-3 bg-orange-50 dark:bg-orange-950/30 rounded">
-                                <p className="text-xs text-muted-foreground">Día de corte</p>
-                                <p className="text-xl font-bold text-orange-600">{selectedService.billingCycleDay}</p>
-                              </div>
-                              <div className="text-center p-3 bg-red-50 dark:bg-red-950/30 rounded">
-                                <p className="text-xs text-muted-foreground">Día de vencimiento</p>
-                                <p className="text-xl font-bold text-red-600">{selectedService.billingDueDay}</p>
-                              </div>
+                            <div className="text-center p-3 bg-orange-50 dark:bg-orange-950/30 rounded">
+                              <p className="text-xs text-muted-foreground">Día de corte</p>
+                              <p className="text-xl font-bold text-orange-600">{billingCycleDay}</p>
                             </div>
                           );
                         }
-                        return <p className="text-sm text-muted-foreground">Las fechas se toman de la configuración del servicio.</p>;
+                        return null;
                       })()}
+                    </div>
+
+                    {/* DatePicker para fecha de vencimiento */}
+                    <div className="space-y-2">
+                      <Label>Fecha de vencimiento *</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={`w-full justify-start text-left font-normal ${
+                              !formData.paymentDate && 'text-muted-foreground'
+                            }`}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {formData.paymentDate
+                              ? formatDateDDMMYYYY(formData.paymentDate)
+                              : 'Selecciona fecha de vencimiento'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={formData.paymentDate}
+                            onSelect={(date) => {
+                              if (date) {
+                                setFormData({ ...formData, paymentDate: date });
+                              }
+                            }}
+                            locale={es}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <p className="text-xs text-muted-foreground">
+                        Puedes ajustar si el día cae en festivo o fin de semana
+                      </p>
                     </div>
                   </div>
                 ) : (
