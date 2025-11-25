@@ -155,6 +155,19 @@ export function Payments() {
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [methodFilter, setMethodFilter] = useState<string>('all');
 
+  // Calcular paymentDate automáticamente cuando se carga/selecciona una línea de servicio
+  useEffect(() => {
+    if (formData.frequency === 'billing_cycle' && formData.serviceLineId && selectedServiceLines.length > 0) {
+      const selectedLine = selectedServiceLines.find(l => l.id === formData.serviceLineId);
+      if (selectedLine?.billingDueDay && !formData.paymentDate) {
+        setFormData(prev => ({
+          ...prev,
+          paymentDate: getNextDueDate(selectedLine.billingDueDay),
+        }));
+      }
+    }
+  }, [formData.serviceLineId, selectedServiceLines, formData.frequency]);
+
   useEffect(() => {
     fetchPayments();
     fetchCards();
