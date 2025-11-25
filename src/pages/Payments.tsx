@@ -166,6 +166,46 @@ export function Payments() {
     }
   }, [searchParams, cards, loading]);
 
+  // Preseleccionar servicio/línea si viene en la URL (desde Dashboard)
+  useEffect(() => {
+    const serviceIdFromUrl = searchParams.get('serviceId');
+    const serviceLineIdFromUrl = searchParams.get('serviceLineId');
+    const fromDashboard = searchParams.get('from') === 'dashboard';
+
+    if (serviceIdFromUrl && services.length > 0 && !loading) {
+      const serviceExists = services.some(s => s.id === serviceIdFromUrl);
+      if (serviceExists) {
+        // Guardar si viene del dashboard para regresar después
+        if (fromDashboard) {
+          setReturnToDashboard(true);
+        }
+
+        // Obtener el servicio para verificar si es billing_cycle
+        const selectedService = services.find(s => s.id === serviceIdFromUrl);
+        const isBillingCycle = selectedService?.serviceType === 'billing_cycle';
+
+        // Abrir formulario y preseleccionar servicio/línea
+        setShowForm(true);
+        setFormData(prev => ({
+          ...prev,
+          paymentType: 'service_payment',
+          serviceId: serviceIdFromUrl,
+          serviceLineId: serviceLineIdFromUrl || '',
+          frequency: isBillingCycle ? 'billing_cycle' : 'monthly',
+          amount: isBillingCycle ? 0 : prev.amount,
+        }));
+
+        // Limpiar monto si es billing_cycle
+        if (isBillingCycle) {
+          setAmountInput('');
+        }
+
+        // Limpiar params de URL para evitar re-triggers
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [searchParams, services, loading]);
+
   const fetchCards = async () => {
     if (!currentUser) return;
 
