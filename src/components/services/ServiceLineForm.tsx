@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -47,9 +47,9 @@ export function ServiceLineForm({
     isActive: editingLine?.isActive ?? true,
   });
 
-  // Reset form when dialog opens with new editing state
-  const handleOpenChange = (newOpen: boolean) => {
-    if (newOpen) {
+  // Reinicializar formData cuando editingLine cambie o el modal se abra
+  useEffect(() => {
+    if (open) {
       setFormData({
         name: editingLine?.name || '',
         lineNumber: editingLine?.lineNumber || '',
@@ -60,8 +60,7 @@ export function ServiceLineForm({
         isActive: editingLine?.isActive ?? true,
       });
     }
-    onOpenChange(newOpen);
-  };
+  }, [editingLine, open]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,7 +76,7 @@ export function ServiceLineForm({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
