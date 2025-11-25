@@ -861,16 +861,6 @@ export function Payments() {
                           Primero agrega servicios en la sección "Servicios"
                         </p>
                       )}
-                      {/* Mensaje informativo para servicios con billing_cycle */}
-                      {formData.serviceId && services.find(s => s.id === formData.serviceId)?.serviceType === 'billing_cycle' && (
-                        <div className="flex items-start gap-2 p-3 bg-orange-50 dark:bg-orange-950/30 rounded-lg border border-orange-200 dark:border-orange-800">
-                          <Info className="h-4 w-4 text-orange-600 mt-0.5 shrink-0" />
-                          <div className="text-xs text-orange-800 dark:text-orange-200">
-                            <p className="font-medium">Servicio con ciclo de facturación</p>
-                            <p className="mt-1">El monto se ingresará cuando llegue el recibo. Se generarán pagos automáticos cada mes.</p>
-                          </div>
-                        </div>
-                      )}
 
                       {/* Selector de línea para servicios billing_cycle con múltiples líneas */}
                       {formData.serviceId &&
@@ -907,24 +897,6 @@ export function Payments() {
                               ))}
                             </SelectContent>
                           </Select>
-
-                          {/* Mostrar info del ciclo de la línea seleccionada */}
-                          {formData.serviceLineId && (() => {
-                            const selectedLine = selectedServiceLines.find(l => l.id === formData.serviceLineId);
-                            if (!selectedLine) return null;
-                            return (
-                              <div className="grid grid-cols-2 gap-3 mt-2">
-                                <div className="p-3 bg-orange-50 dark:bg-orange-950/30 rounded-lg text-center">
-                                  <p className="text-xs text-muted-foreground mb-1">Día de corte</p>
-                                  <p className="text-xl font-bold text-orange-600">{selectedLine.billingCycleDay}</p>
-                                </div>
-                                <div className="p-3 bg-red-50 dark:bg-red-950/30 rounded-lg text-center">
-                                  <p className="text-xs text-muted-foreground mb-1">Día de vencimiento</p>
-                                  <p className="text-xl font-bold text-red-600">{selectedLine.billingDueDay}</p>
-                                </div>
-                              </div>
-                            );
-                          })()}
                         </div>
                       )}
 
@@ -1038,29 +1010,8 @@ export function Payments() {
                     </div>
                   </div>
                 ) : formData.frequency === 'billing_cycle' ? (
-                  // Información y DatePicker para servicios con ciclo de facturación
-                  <div className="space-y-4">
-                    {/* Información del ciclo de corte */}
-                    <div className="p-4 bg-muted/50 rounded-lg border">
-                      <p className="text-sm font-medium mb-2">Ciclo de facturación</p>
-                      {(() => {
-                        const selectedService = services.find(s => s.id === formData.serviceId);
-                        const selectedLine = selectedServiceLines.find(l => l.id === formData.serviceLineId);
-                        const billingCycleDay = selectedLine?.billingCycleDay || selectedService?.billingCycleDay;
-
-                        if (billingCycleDay) {
-                          return (
-                            <div className="text-center p-3 bg-orange-50 dark:bg-orange-950/30 rounded">
-                              <p className="text-xs text-muted-foreground">Día de corte</p>
-                              <p className="text-xl font-bold text-orange-600">{billingCycleDay}</p>
-                            </div>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-
-                    {/* DatePicker para fecha de vencimiento */}
+                  // DatePicker para servicios con ciclo de facturación
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Fecha de vencimiento *</Label>
                       <Popover>
@@ -1091,9 +1042,6 @@ export function Payments() {
                           />
                         </PopoverContent>
                       </Popover>
-                      <p className="text-xs text-muted-foreground">
-                        Puedes ajustar si el día cae en festivo o fin de semana
-                      </p>
                     </div>
                   </div>
                 ) : (
