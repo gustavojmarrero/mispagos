@@ -49,7 +49,6 @@ import {
   Search,
   Loader2,
   MessageSquare,
-  Copy,
   Check,
   Trash2,
 } from 'lucide-react';
@@ -57,15 +56,8 @@ import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { Pagination } from '@/components/ui/pagination';
 import { CardGridItem } from '@/components/cards/CardGridItem';
 import { CardListItem } from '@/components/cards/CardListItem';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
-import { formatCurrency, getCardIcon } from '@/lib/utils';
+import { CardDetailSheet } from '@/components/cards/CardDetailSheet';
+import { formatCurrency } from '@/lib/utils';
 
 export function Cards() {
   const { currentUser } = useAuth();
@@ -567,11 +559,9 @@ export function Cards() {
     setViewingCard(card);
   };
 
-  const handleEditFromView = () => {
-    if (viewingCard) {
-      setViewingCard(null);
-      handleEdit(viewingCard);
-    }
+  const handleEditFromView = (card: CardType) => {
+    setViewingCard(null);
+    handleEdit(card);
   };
 
   const handleEdit = (card: CardType) => {
@@ -1208,328 +1198,179 @@ export function Cards() {
       </Button>
 
       {/* Sheet de vista de tarjeta */}
-      <Sheet open={!!viewingCard} onOpenChange={() => setViewingCard(null)}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-          {viewingCard && (
-            <>
-              <SheetHeader className="text-left">
-                <div className="flex items-center gap-3">
-                  <div className="bg-gray-50 p-2 rounded-lg">
-                    <img src={getCardIcon(viewingCard.cardType)} alt={viewingCard.cardType} className="h-8 w-auto" />
-                  </div>
-                  <div>
-                    <SheetTitle className="text-lg">{viewingCard.name}</SheetTitle>
-                    <SheetDescription className="font-mono">**** {viewingCard.lastDigits}</SheetDescription>
-                  </div>
-                </div>
-              </SheetHeader>
+      <CardDetailSheet
+        card={viewingCard}
+        open={!!viewingCard}
+        onOpenChange={(open) => !open && setViewingCard(null)}
+        banks={banks}
+        onEdit={handleEditFromView}
+      >
+        {/* Pagos Programados */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-medium text-muted-foreground">Pagos Programados</h4>
+            <Badge variant="secondary">{cardPayments.length}</Badge>
+          </div>
 
-              <div className="mt-6 space-y-6">
-                {/* Información básica */}
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground">Información</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-muted/50 p-3 rounded-lg">
-                      <p className="text-xs text-muted-foreground">Propietario</p>
-                      <p className="font-medium">{viewingCard.owner}</p>
-                    </div>
-                    <div className="bg-muted/50 p-3 rounded-lg">
-                      <p className="text-xs text-muted-foreground">Banco</p>
-                      <p className="font-medium">{getBankName(viewingCard.bankId)}</p>
-                    </div>
-                    <div className="bg-muted/50 p-3 rounded-lg">
-                      <p className="text-xs text-muted-foreground">Tipo</p>
-                      <p className="font-medium">{viewingCard.cardType}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Números de tarjeta */}
-                {(viewingCard.physicalCardNumber || viewingCard.digitalCardNumber || viewingCard.clabeAccount) && (
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-medium text-muted-foreground">Números</h4>
-                    <div className="space-y-2">
-                      {viewingCard.physicalCardNumber && (
-                        <div className="bg-muted/50 p-3 rounded-lg">
-                          <p className="text-xs text-muted-foreground mb-1">Tarjeta Física</p>
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="font-mono text-sm">{formatCardNumber(viewingCard.physicalCardNumber)}</p>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0"
-                              onClick={() => {
-                                navigator.clipboard.writeText(viewingCard.physicalCardNumber || '');
-                                toast.success('Número de tarjeta física copiado');
-                              }}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                      {viewingCard.digitalCardNumber && (
-                        <div className="bg-muted/50 p-3 rounded-lg">
-                          <p className="text-xs text-muted-foreground mb-1">Tarjeta Digital</p>
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="font-mono text-sm">{formatCardNumber(viewingCard.digitalCardNumber)}</p>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0"
-                              onClick={() => {
-                                navigator.clipboard.writeText(viewingCard.digitalCardNumber || '');
-                                toast.success('Número de tarjeta digital copiado');
-                              }}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                      {viewingCard.clabeAccount && (
-                        <div className="bg-muted/50 p-3 rounded-lg">
-                          <p className="text-xs text-muted-foreground mb-1">CLABE</p>
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="font-mono text-sm">{formatCLABE(viewingCard.clabeAccount)}</p>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 p-0"
-                              onClick={() => {
-                                navigator.clipboard.writeText(viewingCard.clabeAccount || '');
-                                toast.success('CLABE copiada');
-                              }}
-                            >
-                              <Copy className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Límites y saldos */}
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground">Límites y Saldos</h4>
+          {loadingPayments ? (
+            <div className="flex justify-center py-4">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+            </div>
+          ) : cardPayments.length === 0 ? (
+            <div className="bg-muted/50 p-4 rounded-lg text-center">
+              <p className="text-sm text-muted-foreground">No hay pagos programados para esta tarjeta</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {cardPayments.map((payment) => (
+                <div
+                  key={payment.id}
+                  className={`border rounded-lg p-3 transition-all ${
+                    payment.status === 'paid' ? 'bg-muted/50 opacity-70' : ''
+                  } ${payment.status === 'partial' ? 'border-blue-400 bg-blue-50/30' : ''}`}
+                >
                   <div className="space-y-2">
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <span className="text-muted-foreground">Límite de Crédito</span>
-                      <span className="font-semibold">{formatCurrency(viewingCard.creditLimit)}</span>
+                    {/* Encabezado del pago */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h5 className="font-semibold text-sm break-words">{payment.description}</h5>
+                        <p className="text-xs text-muted-foreground">
+                          {payment.dueDate.toLocaleDateString('es-ES')}
+                        </p>
+                        {payment.notes && (
+                          <p className="text-xs text-muted-foreground italic mt-1">
+                            📝 {payment.notes}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="font-semibold text-sm">{formatCurrency(payment.amount)}</p>
+                        {getStatusBadge(payment.status)}
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center py-2 border-b">
-                      <span className="text-muted-foreground">Disponible</span>
-                      <span className="font-semibold text-green-600">{formatCurrency(viewingCard.availableCredit)}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2">
-                      <span className="text-muted-foreground">Saldo Actual</span>
-                      <span className="font-semibold">{formatCurrency(viewingCard.currentBalance)}</span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Fechas */}
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-muted-foreground">Fechas de Pago</h4>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-muted/50 p-3 rounded-lg text-center">
-                      <p className="text-xs text-muted-foreground">Día de Corte</p>
-                      <p className="text-2xl font-bold">{viewingCard.closingDay}</p>
-                    </div>
-                    <div className="bg-muted/50 p-3 rounded-lg text-center">
-                      <p className="text-xs text-muted-foreground">Día de Pago</p>
-                      <p className="text-2xl font-bold">{viewingCard.dueDay}</p>
-                    </div>
-                  </div>
-                </div>
+                    {/* Progress bar para pagos parciales */}
+                    {payment.status === 'partial' && (payment.paidAmount || 0) > 0 && (
+                      <div className="bg-white rounded-lg p-2 border border-blue-200">
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="text-muted-foreground">Progreso</span>
+                          <span className="font-semibold text-blue-600">
+                            {Math.round(((payment.paidAmount || 0) / payment.amount) * 100)}%
+                          </span>
+                        </div>
+                        <Progress
+                          value={((payment.paidAmount || 0) / payment.amount) * 100}
+                          className="h-1.5 mb-1"
+                        />
+                        <div className="flex justify-between text-xs">
+                          <span className="text-green-600 font-medium">
+                            {formatCurrency(payment.paidAmount || 0)}
+                          </span>
+                          <span className="text-blue-600 font-medium">
+                            {formatCurrency(payment.remainingAmount || 0)}
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
-                {/* Comentarios */}
-                {viewingCard.comments && (
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-medium text-muted-foreground">Comentarios</h4>
-                    <div className="bg-muted/50 p-3 rounded-lg">
-                      <p className="text-sm whitespace-pre-wrap">{viewingCard.comments}</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Pagos Programados */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-medium text-muted-foreground">Pagos Programados</h4>
-                    <Badge variant="secondary">{cardPayments.length}</Badge>
-                  </div>
-
-                  {loadingPayments ? (
-                    <div className="flex justify-center py-4">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                    </div>
-                  ) : cardPayments.length === 0 ? (
-                    <div className="bg-muted/50 p-4 rounded-lg text-center">
-                      <p className="text-sm text-muted-foreground">No hay pagos programados para esta tarjeta</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {cardPayments.map((payment) => (
-                        <div
-                          key={payment.id}
-                          className={`border rounded-lg p-3 transition-all ${
-                            payment.status === 'paid' ? 'bg-muted/50 opacity-70' : ''
-                          } ${payment.status === 'partial' ? 'border-blue-400 bg-blue-50/30' : ''}`}
-                        >
-                          <div className="space-y-2">
-                            {/* Encabezado del pago */}
-                            <div className="flex items-start justify-between gap-2">
+                    {/* Historial de pagos parciales */}
+                    {payment.partialPayments && payment.partialPayments.length > 0 && (
+                      <div className="bg-muted/30 rounded-lg p-2 border">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-semibold">Historial de abonos</span>
+                          <Badge variant="secondary" className="text-xs h-5">
+                            {payment.partialPayments.length}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1">
+                          {payment.partialPayments.map((partial) => (
+                            <div
+                              key={partial.id}
+                              className="flex items-center justify-between text-xs bg-white rounded p-2 border"
+                            >
                               <div className="flex-1 min-w-0">
-                                <h5 className="font-semibold text-sm break-words">{payment.description}</h5>
-                                <p className="text-xs text-muted-foreground">
-                                  {payment.dueDate.toLocaleDateString('es-ES')}
+                                <p className="font-semibold text-green-600">
+                                  {formatCurrency(partial.amount)}
                                 </p>
-                                {payment.notes && (
-                                  <p className="text-xs text-muted-foreground italic mt-1">
-                                    📝 {payment.notes}
+                                <p className="text-muted-foreground text-xs">
+                                  {new Date(partial.paidDate).toLocaleDateString('es-ES')}
+                                  {' • '}{partial.paidByName}
+                                </p>
+                                {partial.notes && (
+                                  <p className="text-muted-foreground italic text-xs mt-1">
+                                    {partial.notes}
                                   </p>
                                 )}
                               </div>
-                              <div className="text-right flex-shrink-0">
-                                <p className="font-semibold text-sm">{formatCurrency(payment.amount)}</p>
-                                {getStatusBadge(payment.status)}
-                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeletePartialPayment(payment, partial.id)}
+                                className="h-6 w-6 p-0 ml-2 flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
                             </div>
-
-                            {/* Progress bar para pagos parciales */}
-                            {payment.status === 'partial' && (payment.paidAmount || 0) > 0 && (
-                              <div className="bg-white rounded-lg p-2 border border-blue-200">
-                                <div className="flex justify-between text-xs mb-1">
-                                  <span className="text-muted-foreground">Progreso</span>
-                                  <span className="font-semibold text-blue-600">
-                                    {Math.round(((payment.paidAmount || 0) / payment.amount) * 100)}%
-                                  </span>
-                                </div>
-                                <Progress
-                                  value={((payment.paidAmount || 0) / payment.amount) * 100}
-                                  className="h-1.5 mb-1"
-                                />
-                                <div className="flex justify-between text-xs">
-                                  <span className="text-green-600 font-medium">
-                                    {formatCurrency(payment.paidAmount || 0)}
-                                  </span>
-                                  <span className="text-blue-600 font-medium">
-                                    {formatCurrency(payment.remainingAmount || 0)}
-                                  </span>
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Historial de pagos parciales */}
-                            {payment.partialPayments && payment.partialPayments.length > 0 && (
-                              <div className="bg-muted/30 rounded-lg p-2 border">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-xs font-semibold">Historial de abonos</span>
-                                  <Badge variant="secondary" className="text-xs h-5">
-                                    {payment.partialPayments.length}
-                                  </Badge>
-                                </div>
-                                <div className="space-y-1">
-                                  {payment.partialPayments.map((partial) => (
-                                    <div
-                                      key={partial.id}
-                                      className="flex items-center justify-between text-xs bg-white rounded p-2 border"
-                                    >
-                                      <div className="flex-1 min-w-0">
-                                        <p className="font-semibold text-green-600">
-                                          {formatCurrency(partial.amount)}
-                                        </p>
-                                        <p className="text-muted-foreground text-xs">
-                                          {new Date(partial.paidDate).toLocaleDateString('es-ES')}
-                                          {' • '}{partial.paidByName}
-                                        </p>
-                                        {partial.notes && (
-                                          <p className="text-muted-foreground italic text-xs mt-1">
-                                            {partial.notes}
-                                          </p>
-                                        )}
-                                      </div>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => handleDeletePartialPayment(payment, partial.id)}
-                                        className="h-6 w-6 p-0 ml-2 flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                      >
-                                        <Trash2 className="h-3 w-3" />
-                                      </Button>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Botones de acción */}
-                            {(payment.status === 'pending' || payment.status === 'partial') && (
-                              <div className="flex gap-2 pt-2">
-                                {payment.status === 'pending' ? (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleMarkAsPaid(payment)}
-                                      className="flex-1 h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                    >
-                                      <Check className="h-3 w-3 mr-1" />
-                                      Pagado
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleOpenPartialPayment(payment)}
-                                      className="flex-1 h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                    >
-                                      <Plus className="h-3 w-3 mr-1" />
-                                      Parcial
-                                    </Button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleOpenPartialPayment(payment)}
-                                      className="flex-1 h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                    >
-                                      <Plus className="h-3 w-3 mr-1" />
-                                      Abonar más
-                                    </Button>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleMarkAsPaid(payment)}
-                                      className="flex-1 h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                    >
-                                      <Check className="h-3 w-3 mr-1" />
-                                      Completar
-                                    </Button>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                          </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+                      </div>
+                    )}
 
-              <SheetFooter className="mt-6">
-                <Button onClick={handleEditFromView} className="w-full">
-                  Editar Tarjeta
-                </Button>
-              </SheetFooter>
-            </>
+                    {/* Botones de acción */}
+                    {(payment.status === 'pending' || payment.status === 'partial') && (
+                      <div className="flex gap-2 pt-2">
+                        {payment.status === 'pending' ? (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleMarkAsPaid(payment)}
+                              className="flex-1 h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              Pagado
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenPartialPayment(payment)}
+                              className="flex-1 h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Parcial
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleOpenPartialPayment(payment)}
+                              className="flex-1 h-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Abonar más
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleMarkAsPaid(payment)}
+                              className="flex-1 h-8 text-green-600 hover:text-green-700 hover:bg-green-50"
+                            >
+                              <Check className="h-3 w-3 mr-1" />
+                              Completar
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
-        </SheetContent>
-      </Sheet>
+        </div>
+      </CardDetailSheet>
 
       {/* Modal de Pago Parcial */}
       {showPartialPaymentModal && editingPayment && (

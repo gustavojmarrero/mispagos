@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   collection,
@@ -15,6 +15,8 @@ import {
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServices } from '@/hooks/useServices';
+import { useBanks } from '@/hooks/useBanks';
+import { CardDetailSheet } from '@/components/cards/CardDetailSheet';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -78,6 +80,7 @@ type TimeFilter = 'all' | 'this_week' | 'next_week' | 'this_month' | 'next_month
 export function PaymentCalendar() {
   const { currentUser } = useAuth();
   const { services } = useServices();
+  const { banks } = useBanks();
   const [searchParams] = useSearchParams();
   const [instances, setInstances] = useState<PaymentInstance[]>([]);
   const [cards, setCards] = useState<CardType[]>([]);
@@ -89,6 +92,8 @@ export function PaymentCalendar() {
   const [showPartialPaymentModal, setShowPartialPaymentModal] = useState(false);
   const [partialAmount, setPartialAmount] = useState('');
   const [partialNotes, setPartialNotes] = useState('');
+  const [viewingCard, setViewingCard] = useState<CardType | null>(null);
+  const [selectedPayments, setSelectedPayments] = useState<Set<string>>(new Set());
 
   // Filtros
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('this_week');
@@ -734,6 +739,26 @@ export function PaymentCalendar() {
     return service?.name || 'Servicio no encontrado';
   };
 
+  // Toggle selección de pago
+  const togglePaymentSelection = (paymentId: string) => {
+    setSelectedPayments(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(paymentId)) {
+        newSet.delete(paymentId);
+      } else {
+        newSet.add(paymentId);
+      }
+      return newSet;
+    });
+  };
+
+  // Calcular sumatoria de pagos seleccionados
+  const selectedTotal = useMemo(() => {
+    return instances
+      .filter(i => selectedPayments.has(i.id))
+      .reduce((sum, i) => sum + i.amount, 0);
+  }, [instances, selectedPayments]);
+
   const getServicePaymentMethod = (serviceId: string) => {
     const service = services.find((s) => s.id === serviceId);
     return service?.paymentMethod || 'transfer';
@@ -1043,11 +1068,12 @@ export function PaymentCalendar() {
                   return (
                     <div
                       key={instance.id}
-                      className={`border rounded-lg p-4 transition-all ${
+                      onClick={() => togglePaymentSelection(instance.id)}
+                      className={`border rounded-lg p-4 transition-all cursor-pointer ${
                         instance.status === 'paid' ? 'bg-muted/50 opacity-70' : ''
                       } ${instance.status === 'cancelled' ? 'bg-muted/30 opacity-50' : ''} ${
                         instance.status === 'partial' ? 'border-blue-400 bg-blue-50/30' : ''
-                      }`}
+                      } ${selectedPayments.has(instance.id) ? 'ring-2 ring-primary bg-primary/5' : ''}`}
                     >
                       <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
                         <div className="flex-1 w-full sm:w-auto">
@@ -1055,11 +1081,23 @@ export function PaymentCalendar() {
                             <Icon className="h-5 w-5 text-primary flex-shrink-0" />
                             <div className="min-w-0 flex-1">
                               <h3 className="font-semibold text-base sm:text-lg break-words">{instance.description}</h3>
-                              <p className="text-xs sm:text-sm text-muted-foreground break-words">
-                                {instance.paymentType === 'card_payment'
-                                  ? `Tarjeta: ${getCardName(instance.cardId || '')}`
-                                  : `Servicio: ${getServiceName(instance.serviceId || '')}`}
-                              </p>
+                              {instance.paymentType === 'card_payment' ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const card = cards.find(c => c.id === instance.cardId);
+                                    if (card) setViewingCard(card);
+                                  }}
+                                  className="text-xs sm:text-sm text-primary hover:underline text-left"
+                                >
+                                  Tarjeta: {getCardName(instance.cardId || '')}
+                                </button>
+                              ) : (
+                                <p className="text-xs sm:text-sm text-muted-foreground break-words">
+                                  Servicio: {getServiceName(instance.serviceId || '')}
+                                </p>
+                              )}
                               {instance.notes && (
                                 <p className="text-xs text-muted-foreground italic mt-1 break-words">
                                   📝 {instance.notes}
@@ -1263,6 +1301,36 @@ export function PaymentCalendar() {
             </CardContent>
           </Card>
         ))
+      )}
+
+      {/* Sheet de detalles de tarjeta */}
+      <CardDetailSheet
+        card={viewingCard}
+        open={!!viewingCard}
+        onOpenChange={(open) => !open && setViewingCard(null)}
+        banks={banks}
+      />
+
+      {/* Barra flotante de selección */}
+      {selectedPayments.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-background border-t shadow-lg p-4 z-50">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+            <span className="text-sm text-muted-foreground">
+              {selectedPayments.size} pago{selectedPayments.size > 1 ? 's' : ''} seleccionado{selectedPayments.size > 1 ? 's' : ''}
+            </span>
+            <span className="font-bold text-lg text-primary">
+              {formatCurrency(selectedTotal)}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedPayments(new Set())}
+            >
+              <X className="h-4 w-4 mr-1" />
+              Limpiar
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );
