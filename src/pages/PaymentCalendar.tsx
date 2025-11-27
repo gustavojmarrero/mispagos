@@ -111,8 +111,9 @@ export function PaymentCalendar() {
     const startParam = searchParams.get('startDate');
     const endParam = searchParams.get('endDate');
     if (startParam && endParam) {
-      setCustomStartDate(new Date(startParam));
-      setCustomEndDate(new Date(endParam));
+      // Añadir T00:00:00 para parsear como fecha local (evitar problemas de zona horaria UTC)
+      setCustomStartDate(new Date(startParam + 'T00:00:00'));
+      setCustomEndDate(new Date(endParam + 'T00:00:00'));
       setTimeFilter('custom');
     }
   }, [searchParams]);

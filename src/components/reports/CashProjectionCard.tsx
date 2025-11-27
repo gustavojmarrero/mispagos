@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { format } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Wallet, Calendar, ExternalLink } from 'lucide-react';
 import type { CashProjection, WeeklyProjection } from '@/lib/reportsMetrics';
@@ -11,8 +12,8 @@ export function CashProjectionCard({ data }: CashProjectionCardProps) {
   const navigate = useNavigate();
 
   const handleWeekClick = (week: WeeklyProjection) => {
-    const startDate = week.startDate.toISOString().split('T')[0];
-    const endDate = week.endDate.toISOString().split('T')[0];
+    const startDate = format(week.startDate, 'yyyy-MM-dd');
+    const endDate = format(week.endDate, 'yyyy-MM-dd');
     navigate(`/calendar?startDate=${startDate}&endDate=${endDate}`);
   };
 
