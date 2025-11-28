@@ -464,6 +464,10 @@ export function Payments() {
       isActive: payment.isActive,
     });
     setShowForm(true);
+    // Scroll automático al formulario
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 100);
   };
 
   const handleDelete = async (paymentId: string) => {

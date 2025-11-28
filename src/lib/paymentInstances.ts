@@ -413,7 +413,53 @@ export function generateInstancesForDateRange(
     return instances;
   }
 
-  // Para servicios con frecuencia
+  // Para pagos de servicio con billing_cycle y paymentDate específico
+  if (scheduledPayment.paymentType === 'service_payment' &&
+      scheduledPayment.frequency === 'billing_cycle' &&
+      scheduledPayment.paymentDate) {
+    console.log('[PaymentInstances] 🔍 Procesando pago billing_cycle con paymentDate:', {
+      description: scheduledPayment.description,
+      paymentDate: scheduledPayment.paymentDate,
+      paymentDateType: typeof scheduledPayment.paymentDate,
+      startDate,
+      endDate,
+    });
+
+    const dueDate = scheduledPayment.paymentDate;
+
+    console.log('[PaymentInstances] 📅 Comparación de fechas billing_cycle:', {
+      dueDate,
+      isAfterStart: dueDate >= startDate,
+      isBeforeEnd: dueDate <= endDate,
+      willGenerate: dueDate >= startDate && dueDate <= endDate,
+    });
+
+    if (dueDate >= startDate && dueDate <= endDate) {
+      console.log('[PaymentInstances] ✅ Generando instancia billing_cycle para:', scheduledPayment.description);
+      instances.push({
+        userId: scheduledPayment.userId,
+        householdId: scheduledPayment.householdId,
+        scheduledPaymentId: scheduledPayment.id,
+        paymentType: scheduledPayment.paymentType,
+        dueDate,
+        amount: scheduledPayment.amount,
+        description: scheduledPayment.description,
+        status: 'pending',
+        cardId: scheduledPayment.cardId,
+        serviceId: scheduledPayment.serviceId,
+        serviceLineId: scheduledPayment.serviceLineId,
+        createdBy: scheduledPayment.createdBy,
+        createdByName: scheduledPayment.createdByName,
+        updatedBy: scheduledPayment.updatedBy,
+        updatedByName: scheduledPayment.updatedByName,
+      });
+    } else {
+      console.log('[PaymentInstances] ⚠️ Fecha billing_cycle fuera del rango, NO se genera instancia');
+    }
+    return instances;
+  }
+
+  // Para servicios con frecuencia (monthly, weekly, once)
   if (scheduledPayment.paymentType === 'service_payment') {
     let currentDate = new Date(startDate);
 

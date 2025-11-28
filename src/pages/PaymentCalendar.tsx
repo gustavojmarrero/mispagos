@@ -76,6 +76,7 @@ interface MonthGroup {
 }
 
 type TimeFilter = 'all' | 'this_week' | 'next_week' | 'this_month' | 'next_month' | 'custom';
+type PaymentTypeFilter = 'all' | 'card' | 'service';
 
 export function PaymentCalendar() {
   const { currentUser } = useAuth();
@@ -98,6 +99,7 @@ export function PaymentCalendar() {
   // Filtros
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('this_week');
   const [showPendingOnly, setShowPendingOnly] = useState(true);
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState<PaymentTypeFilter>('all');
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
 
@@ -346,6 +348,7 @@ export function PaymentCalendar() {
   const handleResetFilters = () => {
     setTimeFilter('this_week');
     setShowPendingOnly(true);
+    setPaymentTypeFilter('all');
     setCustomStartDate(null);
     setCustomEndDate(null);
   };
@@ -354,7 +357,7 @@ export function PaymentCalendar() {
    * Verifica si hay filtros no-default activos
    */
   const hasNonDefaultFilters = (): boolean => {
-    return timeFilter !== 'this_week' || !showPendingOnly;
+    return timeFilter !== 'this_week' || !showPendingOnly || paymentTypeFilter !== 'all';
   };
 
   /**
@@ -375,6 +378,13 @@ export function PaymentCalendar() {
     // Filtro de estado - incluir 'partial' en pendientes
     if (showPendingOnly) {
       filtered = filtered.filter((instance) => instance.status === 'pending' || instance.status === 'partial');
+    }
+
+    // Filtro de tipo de pago
+    if (paymentTypeFilter === 'card') {
+      filtered = filtered.filter((instance) => instance.paymentType === 'card_payment');
+    } else if (paymentTypeFilter === 'service') {
+      filtered = filtered.filter((instance) => instance.paymentType === 'service_payment');
     }
 
     return filtered;
@@ -817,6 +827,21 @@ export function PaymentCalendar() {
                   <SelectItem value="this_month">Este mes</SelectItem>
                   <SelectItem value="next_month">Próximo mes</SelectItem>
                   <SelectItem value="custom">Personalizado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Filtro de tipo de pago */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Tipo:</span>
+              <Select value={paymentTypeFilter} onValueChange={(value) => setPaymentTypeFilter(value as PaymentTypeFilter)}>
+                <SelectTrigger className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="card">Tarjetas</SelectItem>
+                  <SelectItem value="service">Servicios</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -342,12 +342,14 @@ export function calculateCashProjection(
   scheduledPayments: ScheduledPayment[]
 ): CashProjection {
   const now = new Date();
+  now.setHours(0, 0, 0, 0);  // Normalizar a medianoche
   const next30Days = new Date(now);
   next30Days.setDate(now.getDate() + 30);
 
   const upcomingInstances = instances.filter(instance => {
     const dueDate = instance.dueDate instanceof Date ? instance.dueDate : new Date(instance.dueDate);
-    return dueDate >= now && dueDate <= next30Days && instance.status === 'pending';
+    const isNotPaid = instance.status === 'pending' || instance.status === 'partial' || instance.status === 'overdue';
+    return dueDate <= next30Days && isNotPaid;
   });
 
   const total = upcomingInstances.reduce((sum, instance) => sum + instance.amount, 0);
@@ -372,6 +374,10 @@ export function calculateCashProjection(
 
     const weekInstances = upcomingInstances.filter(instance => {
       const dueDate = instance.dueDate instanceof Date ? instance.dueDate : new Date(instance.dueDate);
+      if (i === 0) {
+        // Semana 1: incluir vencidos (dueDate < weekStart) + esta semana
+        return dueDate <= weekEnd;
+      }
       return dueDate >= weekStart && dueDate <= weekEnd;
     });
 
