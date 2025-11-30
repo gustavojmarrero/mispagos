@@ -24,6 +24,32 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 221.2 83.2% 53.3%;
     --radius: 0.5rem;
+
+    /* Payment Status Colors */
+    /* Pending - Slate neutro sofisticado */
+    --status-pending: 215 20% 65%;
+    --status-pending-bg: 215 20% 97%;
+    --status-pending-border: 215 20% 85%;
+
+    /* Partial - Indigo profundo */
+    --status-partial: 234 89% 63%;
+    --status-partial-bg: 234 89% 97%;
+    --status-partial-border: 234 89% 85%;
+
+    /* Paid - Esmeralda elegante */
+    --status-paid: 158 64% 40%;
+    --status-paid-bg: 158 64% 97%;
+    --status-paid-border: 158 64% 85%;
+
+    /* Overdue - Coral cálido */
+    --status-overdue: 12 76% 61%;
+    --status-overdue-bg: 12 76% 97%;
+    --status-overdue-border: 12 76% 80%;
+
+    /* Cancelled - Gris frío */
+    --status-cancelled: 220 13% 60%;
+    --status-cancelled-bg: 220 13% 96%;
+    --status-cancelled-border: 220 13% 88%;
   }
 }
 

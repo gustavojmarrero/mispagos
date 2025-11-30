@@ -17,7 +17,37 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        sans: ['Plus Jakarta Sans', 'system-ui', 'sans-serif'],
+      },
       colors: {
+        status: {
+          pending: {
+            DEFAULT: "hsl(var(--status-pending))",
+            bg: "hsl(var(--status-pending-bg))",
+            border: "hsl(var(--status-pending-border))",
+          },
+          partial: {
+            DEFAULT: "hsl(var(--status-partial))",
+            bg: "hsl(var(--status-partial-bg))",
+            border: "hsl(var(--status-partial-border))",
+          },
+          paid: {
+            DEFAULT: "hsl(var(--status-paid))",
+            bg: "hsl(var(--status-paid-bg))",
+            border: "hsl(var(--status-paid-border))",
+          },
+          overdue: {
+            DEFAULT: "hsl(var(--status-overdue))",
+            bg: "hsl(var(--status-overdue-bg))",
+            border: "hsl(var(--status-overdue-border))",
+          },
+          cancelled: {
+            DEFAULT: "hsl(var(--status-cancelled))",
+            bg: "hsl(var(--status-cancelled-bg))",
+            border: "hsl(var(--status-cancelled-border))",
+          },
+        },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

@@ -17,11 +17,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useServices } from '@/hooks/useServices';
 import { useBanks } from '@/hooks/useBanks';
 import { CardDetailSheet } from '@/components/cards/CardDetailSheet';
+import { PaymentRow } from '@/components/payment/PaymentRow';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import {
@@ -48,21 +48,16 @@ import {
 import type {
   PaymentInstance,
   Card as CardType,
-  PaymentStatus,
   PartialPayment,
 } from '@/lib/types';
 import {
   Calendar,
   CreditCard,
-  Store,
-  Check,
   X,
-  Edit,
   Banknote,
   CalendarRange,
-  RotateCcw,
   Plus,
-  Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -250,28 +245,41 @@ export function PaymentCalendar() {
         return null; // Sin filtro de fecha
 
       case 'this_week': {
-        // Desde hoy hasta el próximo lunes inclusive
-        const nextMonday = new Date(today);
-        const currentDay = today.getDay();
-        const daysUntilMonday = currentDay === 0 ? 1 : currentDay === 1 ? 7 : (8 - currentDay);
-        nextMonday.setDate(nextMonday.getDate() + daysUntilMonday);
-        nextMonday.setHours(23, 59, 59, 999);
-        return { start: today, end: nextMonday };
+        // Semana de martes a lunes
+        // Calcular el martes de esta semana
+        const currentDay = today.getDay(); // 0=domingo, 1=lunes, 2=martes...
+        // Días desde el martes: si hoy >= martes, restar (day-2); si hoy < martes, restar (day+5)
+        const daysFromTuesday = currentDay >= 2 ? currentDay - 2 : currentDay + 5;
+        const tuesday = new Date(today);
+        tuesday.setDate(tuesday.getDate() - daysFromTuesday);
+        tuesday.setHours(0, 0, 0, 0);
+
+        // El lunes es 6 días después del martes
+        const monday = new Date(tuesday);
+        monday.setDate(monday.getDate() + 6);
+        monday.setHours(23, 59, 59, 999);
+
+        return { start: tuesday, end: monday };
       }
 
       case 'next_week': {
-        // Desde el próximo lunes hasta el domingo siguiente
+        // Próxima semana: martes siguiente al lunes actual hasta el lunes siguiente
         const currentDay = today.getDay();
-        const daysUntilNextMonday = currentDay === 0 ? 1 : currentDay === 1 ? 7 : (8 - currentDay);
-        const nextMonday = new Date(today);
-        nextMonday.setDate(nextMonday.getDate() + daysUntilNextMonday);
-        nextMonday.setHours(0, 0, 0, 0);
+        const daysFromTuesday = currentDay >= 2 ? currentDay - 2 : currentDay + 5;
+        const thisTuesday = new Date(today);
+        thisTuesday.setDate(thisTuesday.getDate() - daysFromTuesday);
 
-        const nextSunday = new Date(nextMonday);
-        nextSunday.setDate(nextSunday.getDate() + 6);
-        nextSunday.setHours(23, 59, 59, 999);
+        // El martes de la próxima semana es 7 días después del martes actual
+        const nextTuesday = new Date(thisTuesday);
+        nextTuesday.setDate(nextTuesday.getDate() + 7);
+        nextTuesday.setHours(0, 0, 0, 0);
 
-        return { start: nextMonday, end: nextSunday };
+        // El lunes de la próxima semana es 6 días después del martes
+        const nextMonday = new Date(nextTuesday);
+        nextMonday.setDate(nextMonday.getDate() + 6);
+        nextMonday.setHours(23, 59, 59, 999);
+
+        return { start: nextTuesday, end: nextMonday };
       }
 
       case 'this_month': {
@@ -775,19 +783,6 @@ export function PaymentCalendar() {
     return service?.paymentMethod || 'transfer';
   };
 
-  const getStatusBadge = (status: PaymentStatus) => {
-    const variants: Record<PaymentStatus, { variant: 'default' | 'secondary' | 'destructive', label: string }> = {
-      pending: { variant: 'default', label: 'Pendiente' },
-      partial: { variant: 'default', label: 'Parcial' },
-      paid: { variant: 'secondary', label: 'Pagado' },
-      overdue: { variant: 'destructive', label: 'Vencido' },
-      cancelled: { variant: 'secondary', label: 'Cancelado' },
-    };
-
-    const config = variants[status];
-    return <Badge variant={config.variant} className={status === 'partial' ? 'bg-blue-600 hover:bg-blue-700' : ''}>{config.label}</Badge>;
-  };
-
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -1056,273 +1051,77 @@ export function PaymentCalendar() {
         </Card>
       ) : (
         monthGroups.map((group) => (
-          <Card key={`${group.month}-${group.year}`}>
-            <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                  <CardTitle className="text-xl sm:text-2xl capitalize">
+          <Card key={`${group.month}-${group.year}`} className="overflow-hidden">
+            {/* Header simple en fila */}
+            <CardHeader className="py-3 px-4 border-b bg-muted/30">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                {/* Izquierda: Mes y conteo */}
+                <div className="flex items-center gap-3">
+                  <CardTitle className="text-lg font-semibold capitalize">
                     {group.month} {group.year}
                   </CardTitle>
-                  <CardDescription className="text-sm">
-                    {group.instances.length} pago{group.instances.length !== 1 ? 's' : ''} programado{group.instances.length !== 1 ? 's' : ''}
-                  </CardDescription>
+                  <span className="text-sm text-muted-foreground">
+                    {group.instances.length} pago{group.instances.length !== 1 ? 's' : ''}
+                  </span>
                 </div>
-                <div className="text-left sm:text-right w-full sm:w-auto">
-                  <p className="text-xl sm:text-2xl font-bold">{formatCurrency(group.totalAmount)}</p>
-                  <div className="flex gap-3 sm:gap-4 mt-2 text-xs sm:text-sm">
-                    <div className="flex items-center gap-1">
-                      <Banknote className="h-4 w-4 text-green-600" />
-                      <span className="text-muted-foreground">{formatCurrency(group.totalTransfer)}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <CreditCard className="h-4 w-4 text-blue-600" />
-                      <span className="text-muted-foreground">{formatCurrency(group.totalCard)}</span>
-                    </div>
+
+                {/* Derecha: Totales */}
+                <div className="flex items-center gap-4">
+                  <span className="text-lg font-bold tabular-nums">
+                    {formatCurrency(group.totalAmount)}
+                  </span>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="flex items-center gap-1 text-emerald-600">
+                      <Banknote className="h-4 w-4" />
+                      {formatCurrency(group.totalTransfer)}
+                    </span>
+                    <span className="flex items-center gap-1 text-blue-600">
+                      <CreditCard className="h-4 w-4" />
+                      {formatCurrency(group.totalCard)}
+                    </span>
                   </div>
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="pt-6">
-              <div className="space-y-4">
-                {group.instances.map((instance) => {
-                  const Icon = instance.paymentType === 'card_payment' ? CreditCard : Store;
-                  const isPaidByCard =
-                    instance.paymentType === 'service_payment' &&
-                    instance.serviceId &&
-                    getServicePaymentMethod(instance.serviceId) === 'card';
-
-                  return (
-                    <div
-                      key={instance.id}
-                      onClick={() => togglePaymentSelection(instance.id)}
-                      className={`border rounded-lg p-4 transition-all cursor-pointer ${
-                        instance.status === 'paid' ? 'bg-muted/50 opacity-70' : ''
-                      } ${instance.status === 'cancelled' ? 'bg-muted/30 opacity-50' : ''} ${
-                        instance.status === 'partial' ? 'border-blue-400 bg-blue-50/30' : ''
-                      } ${selectedPayments.has(instance.id) ? 'ring-2 ring-primary bg-primary/5' : ''}`}
-                    >
-                      <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
-                        <div className="flex-1 w-full sm:w-auto">
-                          <div className="flex items-center gap-3">
-                            <Icon className="h-5 w-5 text-primary flex-shrink-0" />
-                            <div className="min-w-0 flex-1">
-                              <h3 className="font-semibold text-base sm:text-lg break-words">{instance.description}</h3>
-                              {instance.paymentType === 'card_payment' ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const card = cards.find(c => c.id === instance.cardId);
-                                    if (card) setViewingCard(card);
-                                  }}
-                                  className="text-xs sm:text-sm text-primary hover:underline text-left"
-                                >
-                                  Tarjeta: {getCardName(instance.cardId || '')}
-                                </button>
-                              ) : (
-                                <p className="text-xs sm:text-sm text-muted-foreground break-words">
-                                  Servicio: {getServiceName(instance.serviceId || '')}
-                                </p>
-                              )}
-                              {instance.notes && (
-                                <p className="text-xs text-muted-foreground italic mt-1 break-words">
-                                  📝 {instance.notes}
-                                </p>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Progress bar para pagos parciales */}
-                          {instance.status === 'partial' && (instance.paidAmount || 0) > 0 && (
-                            <div className="mt-3 bg-white rounded-lg p-3 border border-blue-200">
-                              <div className="flex justify-between text-xs mb-2">
-                                <span className="text-muted-foreground">Progreso del pago</span>
-                                <span className="font-semibold text-blue-600">
-                                  {Math.round(((instance.paidAmount || 0) / instance.amount) * 100)}%
-                                </span>
-                              </div>
-                              <Progress
-                                value={((instance.paidAmount || 0) / instance.amount) * 100}
-                                className="h-2 mb-2"
-                              />
-                              <div className="flex justify-between text-xs">
-                                <span className="text-green-600 font-medium">
-                                  Pagado: {formatCurrency(instance.paidAmount || 0)}
-                                </span>
-                                <span className="text-blue-600 font-medium">
-                                  Restante: {formatCurrency(instance.remainingAmount || 0)}
-                                </span>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Historial de pagos parciales */}
-                          {instance.partialPayments && instance.partialPayments.length > 0 && (
-                            <div className="mt-3 bg-muted/30 rounded-lg p-3 border">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="text-xs font-semibold">Historial de abonos</span>
-                                <Badge variant="secondary" className="text-xs">
-                                  {instance.partialPayments.length}
-                                </Badge>
-                              </div>
-                              <div className="space-y-2">
-                                {instance.partialPayments.map((payment) => (
-                                  <div
-                                    key={payment.id}
-                                    className="flex items-center justify-between text-xs bg-white rounded p-2 border"
-                                  >
-                                    <div className="flex-1 min-w-0">
-                                      <p className="font-semibold text-green-600">
-                                        {formatCurrency(payment.amount)}
-                                      </p>
-                                      <p className="text-muted-foreground text-xs">
-                                        {new Date(payment.paidDate).toLocaleDateString('es-ES')}{' '}
-                                        • {payment.paidByName}
-                                      </p>
-                                      {payment.notes && (
-                                        <p className="text-muted-foreground italic text-xs mt-1">
-                                          {payment.notes}
-                                        </p>
-                                      )}
-                                    </div>
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={() => handleDeletePartialPayment(instance, payment.id)}
-                                      className="h-6 w-6 p-0 ml-2 flex-shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                                    >
-                                      <Trash2 className="h-3 w-3" />
-                                    </Button>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                            <div>
-                              <p className="text-xs sm:text-sm text-muted-foreground">Fecha</p>
-                              <p className="font-semibold text-sm sm:text-base">
-                                {instance.dueDate.toLocaleDateString('es-ES')}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-xs sm:text-sm text-muted-foreground">Monto</p>
-                              <p className="font-semibold text-sm sm:text-base">{formatCurrency(instance.amount)}</p>
-                            </div>
-                            <div>
-                              <p className="text-xs sm:text-sm text-muted-foreground">Método de pago</p>
-                              <div className="flex items-center gap-1">
-                                {isPaidByCard || instance.paymentType === 'card_payment' ? (
-                                  instance.paymentType === 'card_payment' ? (
-                                    <>
-                                      <Banknote className="h-4 w-4 text-green-600" />
-                                      <span className="text-xs sm:text-sm font-semibold text-green-600">Transferencia</span>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <CreditCard className="h-4 w-4 text-blue-600" />
-                                      <span className="text-xs sm:text-sm font-semibold text-blue-600">Tarjeta</span>
-                                    </>
-                                  )
-                                ) : (
-                                  <>
-                                    <Banknote className="h-4 w-4 text-green-600" />
-                                    <span className="text-xs sm:text-sm font-semibold text-green-600">Transferencia</span>
-                                  </>
-                                )}
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-xs sm:text-sm text-muted-foreground">Estado</p>
-                              {getStatusBadge(instance.status)}
-                            </div>
-                          </div>
-                        </div>
-
-                        {(instance.status === 'pending' || instance.status === 'paid' || instance.status === 'partial') && (
-                          <div className="flex sm:flex-col gap-2 w-full sm:w-auto sm:ml-4">
-                            {instance.status === 'pending' ? (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleMarkAsPaid(instance)}
-                                  className="flex-1 sm:flex-none min-h-[44px] text-green-600 hover:text-green-700 hover:bg-green-50"
-                                >
-                                  <Check className="h-4 w-4 mr-1" />
-                                  Pagado
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleOpenPartialPayment(instance)}
-                                  className="flex-1 sm:flex-none min-h-[44px] text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                >
-                                  <Plus className="h-4 w-4 mr-1" />
-                                  Parcial
-                                </Button>
-                              </>
-                            ) : instance.status === 'partial' ? (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleOpenPartialPayment(instance)}
-                                  className="flex-1 sm:flex-none min-h-[44px] text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                                >
-                                  <Plus className="h-4 w-4 mr-1" />
-                                  Abonar más
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleMarkAsPaid(instance)}
-                                  className="flex-1 sm:flex-none min-h-[44px] text-green-600 hover:text-green-700 hover:bg-green-50"
-                                >
-                                  <Check className="h-4 w-4 mr-1" />
-                                  Completar
-                                </Button>
-                              </>
-                            ) : (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleUnmarkAsPaid(instance)}
-                                className="flex-1 sm:flex-none min-h-[44px] text-orange-600 hover:text-orange-700 hover:bg-orange-50"
-                              >
-                                <RotateCcw className="h-4 w-4 mr-1" />
-                                Desmarcar
-                              </Button>
-                            )}
-                            {(instance.status === 'pending' || instance.status === 'partial') && (
-                              <>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleOpenAdjust(instance)}
-                                  className="flex-1 sm:flex-none min-h-[44px]"
-                                >
-                                  <Edit className="h-4 w-4 mr-1" />
-                                  Ajustar
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => handleCancelPayment(instance)}
-                                  className="flex-1 sm:flex-none min-h-[44px] text-destructive hover:text-destructive hover:bg-destructive/10"
-                                >
-                                  <X className="h-4 w-4 mr-1" />
-                                  Cancelar
-                                </Button>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
+            <CardContent className="pt-4">
+              <div className="space-y-2">
+                {group.instances.map((instance) => (
+                  <PaymentRow
+                    key={instance.id}
+                    variant="calendar"
+                    data={{
+                      id: instance.id,
+                      description: instance.description,
+                      amount: instance.amount,
+                      dueDate: instance.dueDate,
+                      paymentType: instance.paymentType,
+                      cardId: instance.cardId,
+                      serviceId: instance.serviceId,
+                      status: instance.status,
+                      remainingAmount: instance.remainingAmount,
+                      paidAmount: instance.paidAmount,
+                      partialPayments: instance.partialPayments,
+                      notes: instance.notes,
+                    }}
+                    actions={{
+                      onMarkPaid: () => handleMarkAsPaid(instance),
+                      onPartialPayment: () => handleOpenPartialPayment(instance),
+                      onAdjust: () => handleOpenAdjust(instance),
+                      onCancel: () => handleCancelPayment(instance),
+                      onUnmark: () => handleUnmarkAsPaid(instance),
+                      onDeletePartial: (_, paymentId) => handleDeletePartialPayment(instance, paymentId),
+                      onViewCard: (cardId) => {
+                        const card = cards.find(c => c.id === cardId);
+                        if (card) setViewingCard(card);
+                      },
+                    }}
+                    isSelected={selectedPayments.has(instance.id)}
+                    onSelect={togglePaymentSelection}
+                    getCardName={getCardName}
+                    getServiceName={getServiceName}
+                    getServicePaymentMethod={getServicePaymentMethod}
+                  />
+                ))}
               </div>
             </CardContent>
           </Card>
@@ -1337,25 +1136,31 @@ export function PaymentCalendar() {
         banks={banks}
       />
 
-      {/* Barra flotante de selección */}
+      {/* Barra flotante de selección refinada */}
       {selectedPayments.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-background border-t shadow-lg p-4 z-50">
-          <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/95 backdrop-blur-sm border border-border/50 rounded-2xl shadow-xl shadow-black/10 px-6 py-4 flex items-center gap-6 z-50 animate-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+              <span className="text-sm font-bold text-primary">
+                {selectedPayments.size}
+              </span>
+            </div>
             <span className="text-sm text-muted-foreground">
-              {selectedPayments.size} pago{selectedPayments.size > 1 ? 's' : ''} seleccionado{selectedPayments.size > 1 ? 's' : ''}
+              seleccionado{selectedPayments.size > 1 ? 's' : ''}
             </span>
-            <span className="font-bold text-lg text-primary">
-              {formatCurrency(selectedTotal)}
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelectedPayments(new Set())}
-            >
-              <X className="h-4 w-4 mr-1" />
-              Limpiar
-            </Button>
           </div>
+          <div className="h-8 w-px bg-border" />
+          <span className="text-xl font-bold tracking-tight">
+            {formatCurrency(selectedTotal)}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedPayments(new Set())}
+            className="h-8 w-8 p-0"
+          >
+            <X className="h-4 w-4" />
+          </Button>
         </div>
       )}
     </div>

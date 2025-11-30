@@ -23,7 +23,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,20 +51,19 @@ import type {
 } from '@/lib/types';
 import {
   Receipt,
-  Edit,
-  Trash2,
   Plus,
   X,
   CreditCard,
   Store,
   Calendar as CalendarIcon,
   DollarSign,
-  Banknote,
   Search,
   Loader2,
   Info,
   Cable,
 } from 'lucide-react';
+import { PaymentRow } from '@/components/payment/PaymentRow';
+import { CardDetailSheet } from '@/components/cards/CardDetailSheet';
 
 const DAYS_OF_WEEK = [
   { value: 0, label: 'Domingo' },
@@ -148,6 +146,7 @@ export function Payments() {
   const [amountInput, setAmountInput] = useState('');
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [duplicatePayment, setDuplicatePayment] = useState<ScheduledPayment | null>(null);
+  const [viewingCard, setViewingCard] = useState<CardType | null>(null);
 
   // Estados para filtros
   const [typeFilter, setTypeFilter] = useState<'all' | 'card_payment' | 'service_payment'>('all');
@@ -1289,108 +1288,35 @@ export function Payments() {
             </CardContent>
           </Card>
         ) : (
-          filteredAndSortedPayments.map((payment) => {
-            const Icon = payment.paymentType === 'card_payment' ? CreditCard : Store;
-            // Los pagos a tarjetas de crédito se realizan con transferencia
-            // Solo los servicios pueden pagarse con tarjeta
-            const isPaidByCard =
-              payment.paymentType === 'service_payment' &&
-              payment.serviceId &&
-              getServicePaymentMethod(payment.serviceId) === 'card';
-
-            return (
-              <Card
-                key={payment.id}
-                className={`relative transition-all duration-300 ${
-                  payment.isActive ? 'border-border' : 'opacity-60 bg-muted/50'
-                }`}
-              >
-                <CardContent className="pt-6">
-                  <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
-                    <div className="flex-1 w-full sm:w-auto">
-                      <div className="flex items-center gap-3">
-                        <Icon className="h-5 w-5 text-primary flex-shrink-0" />
-                        <div className="min-w-0">
-                          <h3 className="font-semibold text-base sm:text-lg break-words">{payment.description}</h3>
-                          <p className="text-xs sm:text-sm text-muted-foreground break-words">
-                            {payment.paymentType === 'card_payment'
-                              ? `Tarjeta: ${getCardName(payment.cardId || '')}`
-                              : `Servicio: ${getServiceName(payment.serviceId || '')}`}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        <div>
-                          <p className="text-xs sm:text-sm text-muted-foreground">Monto</p>
-                          <p className="font-semibold text-base sm:text-lg">{formatCurrency(payment.amount)}</p>
-                        </div>
-                        <div>
-                          <p className="text-xs sm:text-sm text-muted-foreground">
-                            {payment.paymentType === 'card_payment' ? 'Fecha de pago' : 'Frecuencia'}
-                          </p>
-                          <p className="font-semibold text-sm sm:text-base">
-                            {getFrequencyLabel(payment)}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-xs sm:text-sm text-muted-foreground">Método de pago</p>
-                          <div className="flex items-center gap-1">
-                            {isPaidByCard ? (
-                              <>
-                                <CreditCard className="h-4 w-4 text-blue-600" />
-                                <span className="text-sm sm:text-base font-semibold text-blue-600">Tarjeta</span>
-                              </>
-                            ) : (
-                              <>
-                                <Banknote className="h-4 w-4 text-green-600" />
-                                <span className="text-sm sm:text-base font-semibold text-green-600">Transferencia</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          <p className="text-xs sm:text-sm text-muted-foreground">Estado</p>
-                          <Badge variant={payment.isActive ? 'default' : 'secondary'}>
-                            {payment.isActive ? 'Activo' : 'Inactivo'}
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex sm:flex-col gap-2 w-full sm:w-auto sm:ml-4">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleActive(payment)}
-                        className="flex-1 sm:flex-none min-h-[44px]"
-                      >
-                        {payment.isActive ? 'Desactivar' : 'Activar'}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleEdit(payment)}
-                        className="flex-1 sm:flex-none min-h-[44px]"
-                      >
-                        <Edit className="h-4 w-4 sm:mr-0 mr-2" />
-                        <span className="sm:hidden">Editar</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(payment.id)}
-                        className="flex-1 sm:flex-none min-h-[44px]"
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive sm:mr-0 mr-2" />
-                        <span className="sm:hidden">Eliminar</span>
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
+          filteredAndSortedPayments.map((payment) => (
+            <PaymentRow
+              key={payment.id}
+              variant="payments"
+              data={{
+                id: payment.id,
+                description: payment.description,
+                amount: payment.amount,
+                dueDate: payment.paymentDate || new Date(),
+                paymentType: payment.paymentType,
+                cardId: payment.cardId,
+                serviceId: payment.serviceId,
+                isActive: payment.isActive,
+                frequency: getFrequencyLabel(payment),
+              }}
+              actions={{
+                onToggleActive: () => toggleActive(payment),
+                onEdit: () => handleEdit(payment),
+                onDelete: () => handleDelete(payment.id),
+                onViewCard: (cardId) => {
+                  const card = cards.find(c => c.id === cardId);
+                  if (card) setViewingCard(card);
+                },
+              }}
+              getCardName={getCardName}
+              getServiceName={getServiceName}
+              getServicePaymentMethod={getServicePaymentMethod}
+            />
+          ))
         )}
       </div>
 
@@ -1447,6 +1373,14 @@ export function Payments() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Sheet de detalle de tarjeta */}
+      <CardDetailSheet
+        card={viewingCard}
+        open={!!viewingCard}
+        onOpenChange={(open) => !open && setViewingCard(null)}
+        banks={banks}
+      />
     </div>
   );
 }

@@ -18,6 +18,17 @@ const badgeVariants = cva(
         mastercard: "border-transparent bg-red-100 text-red-800",
         amex: "border-transparent bg-green-100 text-green-800",
         unknown: "border-transparent bg-gray-100 text-gray-800",
+        // Payment status variants
+        "status-pending":
+          "bg-status-pending-bg text-status-pending border-status-pending/20",
+        "status-partial":
+          "bg-status-partial text-white border-transparent",
+        "status-paid":
+          "bg-status-paid-bg text-status-paid border-status-paid/20",
+        "status-overdue":
+          "bg-status-overdue text-white border-transparent",
+        "status-cancelled":
+          "bg-transparent text-status-cancelled border-status-cancelled/30",
       },
     },
     defaultVariants: {
