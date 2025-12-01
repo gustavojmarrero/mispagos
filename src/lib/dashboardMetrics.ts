@@ -292,13 +292,30 @@ export function calculateWeeklyCashFlow(
 const PAYMENT_TOLERANCE_DAYS = 5;
 
 /**
- * Calcula la fecha de corte para una tarjeta en un mes específico
+ * Calcula la fecha de corte para una tarjeta.
+ * Si el día actual es menor que el día de corte, retorna el corte del mes anterior
+ * (ya que ese es el período "activo" que requiere pago).
  */
 function getClosingDate(card: Card, referenceDate: Date): Date {
-  const year = referenceDate.getFullYear();
-  const month = referenceDate.getMonth();
+  const todayDay = referenceDate.getDate();
+  let year = referenceDate.getFullYear();
+  let month = referenceDate.getMonth();
 
-  const closingDate = new Date(year, month, card.closingDay);
+  // Si el día actual es menor que el día de corte,
+  // el corte relevante es del mes anterior
+  if (todayDay < card.closingDay) {
+    month = month - 1;
+    if (month < 0) {
+      month = 11;
+      year = year - 1;
+    }
+  }
+
+  // Ajustar día si el mes no tiene suficientes días (ej: 31 en meses de 30 días)
+  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+  const adjustedClosingDay = Math.min(card.closingDay, lastDayOfMonth);
+
+  const closingDate = new Date(year, month, adjustedClosingDay);
   closingDate.setHours(0, 0, 0, 0);
 
   return closingDate;
@@ -322,7 +339,11 @@ function getExpectedDueDate(card: Card, closingDate: Date): Date {
     }
   }
 
-  const dueDate = new Date(dueYear, dueMonth, card.dueDay);
+  // Ajustar día si el mes no tiene suficientes días (ej: 31 en meses de 30 días)
+  const lastDayOfDueMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
+  const adjustedDueDay = Math.min(card.dueDay, lastDayOfDueMonth);
+
+  const dueDate = new Date(dueYear, dueMonth, adjustedDueDay);
   dueDate.setHours(23, 59, 59, 999);
 
   return dueDate;
