@@ -73,6 +73,20 @@ interface MonthGroup {
 type TimeFilter = 'all' | 'this_week' | 'next_week' | 'this_month' | 'next_month' | 'custom';
 type PaymentTypeFilter = 'all' | 'card' | 'service';
 
+// Parsear fecha de input type="date" como fecha local (no UTC)
+const parseLocalDate = (dateString: string): Date => {
+  const [year, month, day] = dateString.split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
+// Formatear fecha para input type="date"
+const formatDateForInput = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 export function PaymentCalendar() {
   const { currentUser } = useAuth();
   const { services } = useServices();
@@ -108,9 +122,9 @@ export function PaymentCalendar() {
     const startParam = searchParams.get('startDate');
     const endParam = searchParams.get('endDate');
     if (startParam && endParam) {
-      // Añadir T00:00:00 para parsear como fecha local (evitar problemas de zona horaria UTC)
-      setCustomStartDate(new Date(startParam + 'T00:00:00'));
-      setCustomEndDate(new Date(endParam + 'T00:00:00'));
+      // Usar parseLocalDate para evitar problemas de zona horaria UTC
+      setCustomStartDate(parseLocalDate(startParam));
+      setCustomEndDate(parseLocalDate(endParam));
       setTimeFilter('custom');
     }
   }, [searchParams]);
@@ -874,8 +888,8 @@ export function PaymentCalendar() {
                 <Input
                   id="start-date"
                   type="date"
-                  value={customStartDate ? customStartDate.toISOString().split('T')[0] : ''}
-                  onChange={(e) => setCustomStartDate(e.target.value ? new Date(e.target.value) : null)}
+                  value={customStartDate ? formatDateForInput(customStartDate) : ''}
+                  onChange={(e) => setCustomStartDate(e.target.value ? parseLocalDate(e.target.value) : null)}
                 />
               </div>
               <div className="flex-1 space-y-1">
@@ -883,9 +897,9 @@ export function PaymentCalendar() {
                 <Input
                   id="end-date"
                   type="date"
-                  value={customEndDate ? customEndDate.toISOString().split('T')[0] : ''}
-                  onChange={(e) => setCustomEndDate(e.target.value ? new Date(e.target.value) : null)}
-                  min={customStartDate ? customStartDate.toISOString().split('T')[0] : ''}
+                  value={customEndDate ? formatDateForInput(customEndDate) : ''}
+                  onChange={(e) => setCustomEndDate(e.target.value ? parseLocalDate(e.target.value) : null)}
+                  min={customStartDate ? formatDateForInput(customStartDate) : ''}
                 />
               </div>
               {customStartDate && customEndDate && (
