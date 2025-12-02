@@ -623,10 +623,6 @@ export function analyzeServiceLineBillingCycles(
     const cutoffDate = getServiceLineCutoffDate(line, today);
     const dueDate = getServiceLineDueDate(line, cutoffDate);
 
-    // Calcular días
-    const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const daysAfterCutoff = Math.ceil((today.getTime() - cutoffDate.getTime()) / (1000 * 60 * 60 * 24));
-
     // Buscar pago programado para esta línea (similar a tarjetas)
     const toleranceMs = 5 * 24 * 60 * 60 * 1000;
 
@@ -637,34 +633,63 @@ export function analyzeServiceLineBillingCycles(
     );
 
     // Buscar en PaymentInstances
-    const lineInstance = instances.find(inst =>
+    let lineInstance = instances.find(inst =>
       inst.serviceLineId === line.id &&
       inst.dueDate >= new Date(cutoffDate.getTime() - toleranceMs) &&
       inst.dueDate <= new Date(dueDate.getTime() + toleranceMs) &&
       (inst.status === 'pending' || inst.status === 'paid' || inst.status === 'partial')
     );
 
+    // Si el período está pagado Y ya pasó la fecha de vencimiento,
+    // avanzar al siguiente período
+    let adjustedCutoffDate = cutoffDate;
+    let adjustedDueDate = dueDate;
+
+    if (lineInstance?.status === 'paid' && dueDate < today) {
+      // Avanzar al siguiente período
+      adjustedCutoffDate = new Date(cutoffDate);
+      adjustedCutoffDate.setMonth(adjustedCutoffDate.getMonth() + 1);
+
+      adjustedDueDate = getServiceLineDueDate(line, adjustedCutoffDate);
+
+      // Buscar instancia del nuevo período
+      lineInstance = instances.find(inst =>
+        inst.serviceLineId === line.id &&
+        inst.dueDate >= new Date(adjustedCutoffDate.getTime() - toleranceMs) &&
+        inst.dueDate <= new Date(adjustedDueDate.getTime() + toleranceMs) &&
+        (inst.status === 'pending' || inst.status === 'paid' || inst.status === 'partial')
+      );
+    }
+
+    // Recalcular días con fechas ajustadas
+    const adjustedDaysUntilDue = Math.ceil(
+      (adjustedDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    const adjustedDaysAfterCutoff = Math.ceil(
+      (today.getTime() - adjustedCutoffDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
     const hasProgrammedPayment = hasScheduledPayment || !!lineInstance;
     const programmedAmount = lineInstance?.amount || 0;
 
-    // Determinar status basado en el estado REAL del pago
+    // Determinar status - verificar pagado PRIMERO
     let status: 'covered' | 'not_programmed' | 'overdue';
-    if (daysUntilDue < 0) {
+    if (lineInstance?.status === 'paid') {
+      status = 'covered';
+    } else if (adjustedDaysUntilDue < 0) {
       status = 'overdue';
-    } else if (lineInstance?.status === 'paid') {
-      status = 'covered';  // Solo si está realmente pagado
     } else {
-      status = 'not_programmed';  // Pendiente o sin programar
+      status = 'not_programmed';
     }
 
     return {
       serviceLine: line,
       service: service!,
       currentPeriod: {
-        cutoffDate,
-        dueDate,
-        daysUntilDue,
-        daysAfterCutoff,
+        cutoffDate: adjustedCutoffDate,
+        dueDate: adjustedDueDate,
+        daysUntilDue: adjustedDaysUntilDue,
+        daysAfterCutoff: adjustedDaysAfterCutoff,
         hasProgrammedPayment,
         programmedAmount,
         status,
