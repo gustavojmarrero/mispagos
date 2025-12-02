@@ -1,4 +1,4 @@
-import { CreditCard, Store, Check, Plus, Edit, X, RotateCcw, Trash2 } from 'lucide-react';
+import { CreditCard, Store, Check, Plus, Edit, X, RotateCcw, Trash2, Cable } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -7,7 +7,7 @@ import {
   getStatusBadgeVariant,
   getStatusLabel,
 } from '@/lib/paymentCardStyles';
-import type { PaymentStatus, PartialPayment } from '@/lib/types';
+import type { PaymentStatus, PartialPayment, ServiceLine } from '@/lib/types';
 import { PaymentMethodLabel } from './PaymentMethodLabel';
 
 // Types
@@ -44,6 +44,7 @@ export interface PaymentRowActions {
   onDelete?: (id: string) => void;
   // Shared
   onViewCard?: (cardId: string) => void;
+  onViewService?: (serviceId: string, payment: PaymentRowData) => void;
 }
 
 interface PaymentRowProps {
@@ -56,6 +57,9 @@ interface PaymentRowProps {
   getCardName: (cardId: string) => string;
   getServiceName: (serviceId: string) => string;
   getServicePaymentMethod: (serviceId: string) => 'card' | 'transfer';
+  // Sub-fila para línea de servicio
+  serviceLine?: ServiceLine | null;
+  showServiceLine?: boolean;
 }
 
 // Subcomponente: Acciones del Calendario
@@ -242,6 +246,8 @@ export function PaymentRow({
   getCardName,
   getServiceName,
   getServicePaymentMethod,
+  serviceLine,
+  showServiceLine = false,
 }: PaymentRowProps) {
   const Icon = data.paymentType === 'card_payment' ? CreditCard : Store;
   const isPaidByCard =
@@ -287,9 +293,16 @@ export function PaymentRow({
                 Tarjeta: {getCardName(data.cardId || '')}
               </button>
             ) : (
-              <p className="text-xs text-muted-foreground truncate">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  actions.onViewService?.(data.serviceId || '', data);
+                }}
+                className="text-xs text-primary hover:underline truncate block"
+              >
                 Servicio: {getServiceName(data.serviceId || '')}
-              </p>
+              </button>
             )}
           </div>
         </div>
@@ -384,6 +397,23 @@ export function PaymentRow({
         <p className="mt-2 text-xs text-muted-foreground italic truncate pl-8 sm:pl-0">
           {data.notes}
         </p>
+      )}
+
+      {/* Sub-fila para línea de servicio */}
+      {showServiceLine && serviceLine && (
+        <div className="ml-8 mt-2 p-3 bg-muted/30 rounded-lg border-l-2 border-primary/30">
+          <div className="flex items-center gap-2 text-sm">
+            <Cable className="h-4 w-4 text-muted-foreground" />
+            <span className="font-medium">{serviceLine.name}</span>
+            {serviceLine.lineNumber && (
+              <span className="text-muted-foreground">({serviceLine.lineNumber})</span>
+            )}
+          </div>
+          <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+            <span>Corte: día {serviceLine.billingCycleDay}</span>
+            <span>Vence: día {serviceLine.billingDueDay}</span>
+          </div>
+        </div>
       )}
     </div>
   );

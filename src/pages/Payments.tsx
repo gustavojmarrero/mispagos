@@ -10,6 +10,7 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
+  Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -48,6 +49,9 @@ import type {
   PaymentFrequency,
   DayOfWeek,
   Card as CardType,
+  Service,
+  ServiceLine,
+  PaymentInstance,
 } from '@/lib/types';
 import {
   Receipt,
@@ -64,6 +68,7 @@ import {
 } from 'lucide-react';
 import { PaymentRow } from '@/components/payment/PaymentRow';
 import { CardDetailSheet } from '@/components/cards/CardDetailSheet';
+import { ServicePaymentSheet } from '@/components/payment/ServicePaymentSheet';
 
 const DAYS_OF_WEEK = [
   { value: 0, label: 'Domingo' },
@@ -137,16 +142,28 @@ export function Payments() {
     isActive: true,
   });
 
-  // Hook para obtener líneas del servicio seleccionado
+  // Hook para obtener líneas del servicio seleccionado (para el formulario)
   const { serviceLines: selectedServiceLines } = useServiceLines({
     serviceId: formData.serviceId || undefined,
     activeOnly: true,
   });
 
+  // Hook para obtener todas las líneas de servicio (para mostrar sub-filas)
+  const { serviceLines: allServiceLines } = useServiceLines({ activeOnly: false });
+
   const [amountInput, setAmountInput] = useState('');
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [duplicatePayment, setDuplicatePayment] = useState<ScheduledPayment | null>(null);
   const [viewingCard, setViewingCard] = useState<CardType | null>(null);
+
+  // Estados para el sheet de servicio
+  const [viewingServicePayment, setViewingServicePayment] = useState<{
+    payment: ScheduledPayment;
+    service: Service;
+    serviceLine: ServiceLine | null;
+  } | null>(null);
+  const [servicePaymentHistory, setServicePaymentHistory] = useState<PaymentInstance[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Estados para filtros
   const [typeFilter, setTypeFilter] = useState<'all' | 'card_payment' | 'service_payment'>('all');
@@ -288,6 +305,70 @@ export function Payments() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Obtener historial de pagos de un servicio
+  const fetchServicePaymentHistory = async (serviceId: string, serviceLineId?: string) => {
+    if (!currentUser) return;
+
+    try {
+      setLoadingHistory(true);
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      const historyQuery = query(
+        collection(db, 'payment_instances'),
+        where('householdId', '==', currentUser.householdId),
+        where('serviceId', '==', serviceId),
+        where('status', 'in', ['paid', 'partial']),
+        where('dueDate', '>=', Timestamp.fromDate(sixMonthsAgo))
+      );
+
+      const snapshot = await getDocs(historyQuery);
+      let historyData = snapshot.docs.map((doc) => ({
+        ...doc.data(),
+        id: doc.id,
+        dueDate: doc.data().dueDate?.toDate() || new Date(),
+        paidDate: doc.data().paidDate?.toDate(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+      })) as PaymentInstance[];
+
+      // Filtrar por línea si aplica
+      if (serviceLineId) {
+        historyData = historyData.filter((h) => h.serviceLineId === serviceLineId);
+      }
+
+      // Ordenar por fecha descendente y limitar a 6
+      historyData.sort((a, b) => b.dueDate.getTime() - a.dueDate.getTime());
+      setServicePaymentHistory(historyData.slice(0, 6));
+    } catch (error) {
+      console.error('Error fetching payment history:', error);
+      setServicePaymentHistory([]);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  // Handler para abrir el sheet de servicio
+  const handleViewService = async (serviceId: string, paymentData: { id: string }) => {
+    const payment = payments.find((p) => p.id === paymentData.id);
+    const service = services.find((s) => s.id === serviceId);
+    if (!payment || !service) return;
+
+    // Obtener línea de servicio si existe
+    const serviceLine = payment.serviceLineId
+      ? allServiceLines.find((l) => l.id === payment.serviceLineId) || null
+      : null;
+
+    setViewingServicePayment({
+      payment,
+      service,
+      serviceLine,
+    });
+
+    // Obtener historial
+    await fetchServicePaymentHistory(serviceId, payment.serviceLineId || undefined);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1288,35 +1369,44 @@ export function Payments() {
             </CardContent>
           </Card>
         ) : (
-          filteredAndSortedPayments.map((payment) => (
-            <PaymentRow
-              key={payment.id}
-              variant="payments"
-              data={{
-                id: payment.id,
-                description: payment.description,
-                amount: payment.amount,
-                dueDate: payment.paymentDate || new Date(),
-                paymentType: payment.paymentType,
-                cardId: payment.cardId,
-                serviceId: payment.serviceId,
-                isActive: payment.isActive,
-                frequency: getFrequencyLabel(payment),
-              }}
-              actions={{
-                onToggleActive: () => toggleActive(payment),
-                onEdit: () => handleEdit(payment),
-                onDelete: () => handleDelete(payment.id),
-                onViewCard: (cardId) => {
-                  const card = cards.find(c => c.id === cardId);
-                  if (card) setViewingCard(card);
-                },
-              }}
-              getCardName={getCardName}
-              getServiceName={getServiceName}
-              getServicePaymentMethod={getServicePaymentMethod}
-            />
-          ))
+          filteredAndSortedPayments.map((payment) => {
+            const serviceLine = payment.serviceLineId
+              ? allServiceLines.find((l) => l.id === payment.serviceLineId)
+              : null;
+
+            return (
+              <PaymentRow
+                key={payment.id}
+                variant="payments"
+                data={{
+                  id: payment.id,
+                  description: payment.description,
+                  amount: payment.amount,
+                  dueDate: payment.paymentDate || new Date(),
+                  paymentType: payment.paymentType,
+                  cardId: payment.cardId,
+                  serviceId: payment.serviceId,
+                  isActive: payment.isActive,
+                  frequency: getFrequencyLabel(payment),
+                }}
+                actions={{
+                  onToggleActive: () => toggleActive(payment),
+                  onEdit: () => handleEdit(payment),
+                  onDelete: () => handleDelete(payment.id),
+                  onViewCard: (cardId) => {
+                    const card = cards.find((c) => c.id === cardId);
+                    if (card) setViewingCard(card);
+                  },
+                  onViewService: handleViewService,
+                }}
+                getCardName={getCardName}
+                getServiceName={getServiceName}
+                getServicePaymentMethod={getServicePaymentMethod}
+                serviceLine={serviceLine}
+                showServiceLine={!!payment.serviceLineId && !!serviceLine}
+              />
+            );
+          })
         )}
       </div>
 
@@ -1380,6 +1470,17 @@ export function Payments() {
         open={!!viewingCard}
         onOpenChange={(open) => !open && setViewingCard(null)}
         banks={banks}
+      />
+
+      {/* Sheet de detalle de servicio */}
+      <ServicePaymentSheet
+        payment={viewingServicePayment?.payment || null}
+        service={viewingServicePayment?.service || null}
+        serviceLine={viewingServicePayment?.serviceLine || null}
+        open={!!viewingServicePayment}
+        onOpenChange={(open) => !open && setViewingServicePayment(null)}
+        paymentHistory={servicePaymentHistory}
+        loadingHistory={loadingHistory}
       />
     </div>
   );
