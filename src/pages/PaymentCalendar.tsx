@@ -137,7 +137,7 @@ export function PaymentCalendar() {
     return analysis.reduce((acc, item) => {
       acc[item.serviceLine.id] = item.currentPeriod.status;
       return acc;
-    }, {} as Record<string, 'covered' | 'not_programmed' | 'overdue'>);
+    }, {} as Record<string, 'covered' | 'not_programmed' | 'overdue' | 'partial' | 'programmed'>);
   }, [allServiceLines, services, scheduledPayments, instances]);
 
   // Leer query params para filtro de fechas (navegación desde Reports)
@@ -1200,7 +1200,8 @@ export function PaymentCalendar() {
                       getServicePaymentMethod={getServicePaymentMethod}
                       serviceLine={serviceLine}
                       showServiceLine={!!instance.serviceLineId && !!serviceLine}
-                      lineStatus={serviceLine ? lineStatusMap[serviceLine.id] : undefined}
+                      lineStatus={serviceLine ? lineStatusMap[serviceLine.id] : 'not_programmed'}
+                      showLineStatusBadge={false}
                     />
                   );
                 })}

@@ -57,7 +57,7 @@ export interface ServiceLineBillingAnalysis {
     daysAfterCutoff: number;
     hasProgrammedPayment: boolean;  // ¿Tiene ScheduledPayment o PaymentInstance?
     programmedAmount: number;
-    status: 'covered' | 'not_programmed' | 'overdue';
+    status: 'covered' | 'not_programmed' | 'overdue' | 'partial' | 'programmed';
   };
 }
 
@@ -607,7 +607,7 @@ function getServiceLineDueDate(line: ServiceLine, cutoffDate: Date): Date {
 export function analyzeServiceLineBillingCycles(
   serviceLines: ServiceLine[],
   services: Service[],
-  scheduledPayments: ScheduledPayment[],
+  _scheduledPayments: ScheduledPayment[],  // No usado: el estado se determina por PaymentInstance
   instances: PaymentInstance[]
 ): ServiceLineBillingAnalysis[] {
   const today = new Date();
@@ -626,15 +626,6 @@ export function analyzeServiceLineBillingCycles(
     // Buscar pago programado para esta línea (similar a tarjetas)
     const toleranceMs = 5 * 24 * 60 * 60 * 1000;
 
-    // Buscar en ScheduledPayments (verificando rango de fechas como en tarjetas)
-    const hasScheduledPayment = scheduledPayments.some(sp =>
-      sp.serviceLineId === line.id &&
-      sp.isActive &&
-      sp.paymentDate &&
-      sp.paymentDate >= new Date(cutoffDate.getTime() - toleranceMs) &&
-      sp.paymentDate <= new Date(dueDate.getTime() + toleranceMs)
-    );
-
     // Buscar en PaymentInstances
     let lineInstance = instances.find(inst =>
       inst.serviceLineId === line.id &&
@@ -644,11 +635,22 @@ export function analyzeServiceLineBillingCycles(
     );
 
     // Si el período está pagado Y ya pasó la fecha de vencimiento,
+    // O si el vencimiento es anterior a la creación de la línea (no existía),
     // avanzar al siguiente período
     let adjustedCutoffDate = cutoffDate;
     let adjustedDueDate = dueDate;
 
-    if (lineInstance?.status === 'paid' && dueDate < today) {
+    // Convertir createdAt a Date (puede ser Firestore Timestamp)
+    const lineCreatedAt = line.createdAt instanceof Date
+      ? line.createdAt
+      : (line.createdAt as any)?.toDate?.() || new Date(0);
+
+    // Avanzar si: período pagado y vencido, O vencimiento anterior a creación de la línea
+    const shouldAdvancePeriod =
+      (lineInstance?.status === 'paid' && dueDate < today) ||
+      (dueDate < lineCreatedAt);
+
+    if (shouldAdvancePeriod) {
       // Avanzar al siguiente período
       adjustedCutoffDate = new Date(cutoffDate);
       adjustedCutoffDate.setMonth(adjustedCutoffDate.getMonth() + 1);
@@ -672,15 +674,24 @@ export function analyzeServiceLineBillingCycles(
       (today.getTime() - adjustedCutoffDate.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    const hasProgrammedPayment = hasScheduledPayment || !!lineInstance;
+    // Para líneas de servicio con ciclo de facturación, el estado se determina
+    // solo por la existencia de una PaymentInstance, no por el ScheduledPayment
+    // (el ScheduledPayment es solo la plantilla de recurrencia)
+    const hasProgrammedPayment = !!lineInstance;
     const programmedAmount = lineInstance?.amount || 0;
+    const isPaid = lineInstance?.status === 'paid';
+    const isPartial = lineInstance?.status === 'partial';
 
-    // Determinar status (igual que tarjetas: considerar pagos pendientes como covered)
-    let status: 'covered' | 'not_programmed' | 'overdue';
+    // Determinar status - distinguir entre pagado y programado
+    let status: 'covered' | 'not_programmed' | 'overdue' | 'partial' | 'programmed';
     if (adjustedDaysUntilDue < 0 && !hasProgrammedPayment) {
       status = 'overdue';
+    } else if (isPaid) {
+      status = 'covered';  // Solo si realmente está pagado
+    } else if (isPartial) {
+      status = 'partial';
     } else if (hasProgrammedPayment) {
-      status = 'covered';
+      status = 'programmed';  // Programado pero no pagado
     } else {
       status = 'not_programmed';
     }

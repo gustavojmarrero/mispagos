@@ -61,7 +61,8 @@ interface PaymentRowProps {
   serviceLine?: ServiceLine | null;
   showServiceLine?: boolean;
   // Estado del ciclo vigente de la línea
-  lineStatus?: 'covered' | 'not_programmed' | 'overdue';
+  lineStatus?: 'covered' | 'not_programmed' | 'overdue' | 'partial' | 'programmed';
+  showLineStatusBadge?: boolean;  // default: true
 }
 
 // Subcomponente: Acciones del Calendario
@@ -251,6 +252,7 @@ export function PaymentRow({
   serviceLine,
   showServiceLine = false,
   lineStatus,
+  showLineStatusBadge = true,
 }: PaymentRowProps) {
   const Icon = data.paymentType === 'card_payment' ? CreditCard : Store;
   const isPaidByCard =
@@ -414,18 +416,24 @@ export function PaymentRow({
               )}
             </div>
             {/* Badge de estado del ciclo vigente */}
-            {lineStatus && (
+            {lineStatus && showLineStatusBadge && (
               <div className={cn(
                 'flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full',
                 lineStatus === 'covered' && 'bg-green-100 text-green-700',
+                lineStatus === 'programmed' && 'bg-blue-100 text-blue-700',
+                lineStatus === 'partial' && 'bg-orange-100 text-orange-700',
                 lineStatus === 'not_programmed' && 'bg-yellow-100 text-yellow-700',
                 lineStatus === 'overdue' && 'bg-red-100 text-red-700'
               )}>
                 {lineStatus === 'covered' && <CheckCircle2 className="h-3 w-3" />}
+                {lineStatus === 'programmed' && <Clock className="h-3 w-3" />}
+                {lineStatus === 'partial' && <Clock className="h-3 w-3" />}
                 {lineStatus === 'not_programmed' && <Clock className="h-3 w-3" />}
                 {lineStatus === 'overdue' && <AlertCircle className="h-3 w-3" />}
                 <span>
                   {lineStatus === 'covered' ? 'Pagado' :
+                   lineStatus === 'programmed' ? 'Programado' :
+                   lineStatus === 'partial' ? 'Parcial' :
                    lineStatus === 'not_programmed' ? 'Pendiente' : 'Vencido'}
                 </span>
               </div>

@@ -208,7 +208,7 @@ export function Payments() {
     return analysis.reduce((acc, item) => {
       acc[item.serviceLine.id] = item.currentPeriod.status;
       return acc;
-    }, {} as Record<string, 'covered' | 'not_programmed' | 'overdue'>);
+    }, {} as Record<string, 'covered' | 'not_programmed' | 'overdue' | 'partial' | 'programmed'>);
   }, [allServiceLines, services, payments, paymentInstances]);
 
   // Preseleccionar tarjeta si viene cardId en la URL (desde Dashboard)
@@ -1450,7 +1450,7 @@ export function Payments() {
                 getServicePaymentMethod={getServicePaymentMethod}
                 serviceLine={serviceLine}
                 showServiceLine={!!payment.serviceLineId && !!serviceLine}
-                lineStatus={serviceLine ? lineStatusMap[serviceLine.id] : undefined}
+                lineStatus={serviceLine ? lineStatusMap[serviceLine.id] : 'not_programmed'}
               />
             );
           })
