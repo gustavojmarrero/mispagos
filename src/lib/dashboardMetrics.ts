@@ -552,12 +552,30 @@ export function analyzeServiceBillingCycles(
 }
 
 /**
- * Calcula la fecha de corte para una línea de servicio
+ * Calcula la fecha de corte para una línea de servicio.
+ * Si el día actual es menor que el día de corte, retorna el corte del mes anterior
+ * (ya que ese es el período "activo" que requiere pago).
  */
 function getServiceLineCutoffDate(line: ServiceLine, referenceDate: Date): Date {
-  const year = referenceDate.getFullYear();
-  const month = referenceDate.getMonth();
-  const cutoffDate = new Date(year, month, line.billingCycleDay);
+  const todayDay = referenceDate.getDate();
+  let year = referenceDate.getFullYear();
+  let month = referenceDate.getMonth();
+
+  // Si el día actual es menor que el día de corte,
+  // el corte relevante es del mes anterior
+  if (todayDay < line.billingCycleDay) {
+    month = month - 1;
+    if (month < 0) {
+      month = 11;
+      year = year - 1;
+    }
+  }
+
+  // Ajustar día si el mes no tiene suficientes días (ej: 31 en meses de 30 días)
+  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+  const adjustedCycleDay = Math.min(line.billingCycleDay, lastDayOfMonth);
+
+  const cutoffDate = new Date(year, month, adjustedCycleDay);
   cutoffDate.setHours(0, 0, 0, 0);
   return cutoffDate;
 }

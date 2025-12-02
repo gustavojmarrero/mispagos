@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   collection,
   addDoc,
@@ -6,9 +6,13 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
+  query,
+  where,
+  getDocs,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import type { ScheduledPayment } from '@/lib/types';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +34,8 @@ import {
   Calendar,
   CalendarClock,
   Loader2,
+  CheckCircle2,
+  AlertCircle,
 } from 'lucide-react';
 import type { Service, ServiceLine, ServiceLineFormData } from '@/lib/types';
 import { useServiceLines } from '@/hooks/useServiceLines';
@@ -48,6 +54,38 @@ export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps
 
   const [showForm, setShowForm] = useState(false);
   const [editingLine, setEditingLine] = useState<ServiceLine | null>(null);
+  const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
+
+  // Cargar pagos programados del servicio
+  useEffect(() => {
+    const fetchScheduledPayments = async () => {
+      if (!currentUser || !service.id) return;
+
+      try {
+        const paymentsQuery = query(
+          collection(db, 'scheduled_payments'),
+          where('householdId', '==', currentUser.householdId),
+          where('serviceId', '==', service.id),
+          where('isActive', '==', true)
+        );
+        const snapshot = await getDocs(paymentsQuery);
+        const payments = snapshot.docs.map((doc) => ({
+          ...doc.data(),
+          id: doc.id,
+        })) as ScheduledPayment[];
+        setScheduledPayments(payments);
+      } catch (error) {
+        console.error('Error fetching scheduled payments:', error);
+      }
+    };
+
+    fetchScheduledPayments();
+  }, [currentUser, service.id]);
+
+  // Verificar si una línea tiene pago programado
+  const hasScheduledPayment = (lineId: string): boolean => {
+    return scheduledPayments.some((sp) => sp.serviceLineId === lineId);
+  };
 
   const handleCreateLine = async (data: Omit<ServiceLineFormData, 'serviceId'>) => {
     if (!currentUser) return;
@@ -186,6 +224,19 @@ export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps
                       <Badge variant="secondary" className="text-xs">
                         Inactiva
                       </Badge>
+                    )}
+                    {line.isActive && (
+                      hasScheduledPayment(line.id) ? (
+                        <Badge variant="default" className="text-xs bg-green-600">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Pago programado
+                        </Badge>
+                      ) : (
+                        <Badge variant="destructive" className="text-xs">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Sin pago programado
+                        </Badge>
+                      )
                     )}
                   </div>
 
