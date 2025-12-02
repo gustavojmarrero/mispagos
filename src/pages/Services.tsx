@@ -520,7 +520,7 @@ export function Services() {
 
       {/* Sheet para ver detalles del servicio */}
       <Sheet open={!!viewingService} onOpenChange={() => setViewingService(null)}>
-        <SheetContent className="w-full sm:max-w-md">
+        <SheetContent className="w-full sm:max-w-md flex flex-col">
           {viewingService && (
             <>
               <SheetHeader className="space-y-4">
@@ -535,7 +535,7 @@ export function Services() {
                 </div>
               </SheetHeader>
 
-              <div className="space-y-6 py-6">
+              <div className="space-y-6 py-6 flex-1 overflow-y-auto">
                 {/* Tipo de servicio */}
                 <div className="space-y-3">
                   <h4 className="text-sm font-medium text-muted-foreground">Tipo de Servicio</h4>
