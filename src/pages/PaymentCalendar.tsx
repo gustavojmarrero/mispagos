@@ -121,7 +121,7 @@ export function PaymentCalendar() {
     fetchInstances();
     fetchCards();
     fetchScheduledPayments();
-  }, [currentUser]);
+  }, [currentUser, timeFilter, customStartDate, customEndDate]);
 
   // Calcular estado del ciclo vigente para cada línea de servicio
   const lineStatusMap = useMemo(() => {
@@ -256,15 +256,28 @@ export function PaymentCalendar() {
     if (!currentUser) return;
 
     try {
-      // Obtener instancias del mes actual y siguiente
       const now = new Date();
-      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-      const nextMonthEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+      let queryStartDate: Date;
+      let queryEndDate: Date;
+
+      // Determinar rango según filtro seleccionado
+      if (timeFilter === 'custom' && customStartDate) {
+        queryStartDate = customStartDate;
+        queryEndDate = customEndDate || new Date(now.getFullYear(), now.getMonth() + 2, 0);
+      } else if (timeFilter === 'all') {
+        // 1 año atrás para "all"
+        queryStartDate = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+        queryEndDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+      } else {
+        // Para otros filtros: mes actual y siguiente
+        queryStartDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        queryEndDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+      }
 
       const instancesQuery = query(
         collection(db, 'payment_instances'),
         where('householdId', '==', currentUser.householdId),
-        where('dueDate', '>=', Timestamp.fromDate(currentMonthStart))
+        where('dueDate', '>=', Timestamp.fromDate(queryStartDate))
       );
 
       const snapshot = await getDocs(instancesQuery);
@@ -279,7 +292,7 @@ export function PaymentCalendar() {
 
       // Filtrar por rango superior en el cliente
       instancesData = instancesData.filter(
-        (instance) => instance.dueDate <= nextMonthEnd
+        (instance) => instance.dueDate <= queryEndDate
       );
 
       // Ordenar por fecha
