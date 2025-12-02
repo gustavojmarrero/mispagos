@@ -626,10 +626,13 @@ export function analyzeServiceLineBillingCycles(
     // Buscar pago programado para esta línea (similar a tarjetas)
     const toleranceMs = 5 * 24 * 60 * 60 * 1000;
 
-    // Buscar en ScheduledPayments
+    // Buscar en ScheduledPayments (verificando rango de fechas como en tarjetas)
     const hasScheduledPayment = scheduledPayments.some(sp =>
       sp.serviceLineId === line.id &&
-      sp.isActive
+      sp.isActive &&
+      sp.paymentDate &&
+      sp.paymentDate >= new Date(cutoffDate.getTime() - toleranceMs) &&
+      sp.paymentDate <= new Date(dueDate.getTime() + toleranceMs)
     );
 
     // Buscar en PaymentInstances
@@ -672,12 +675,12 @@ export function analyzeServiceLineBillingCycles(
     const hasProgrammedPayment = hasScheduledPayment || !!lineInstance;
     const programmedAmount = lineInstance?.amount || 0;
 
-    // Determinar status - verificar pagado PRIMERO
+    // Determinar status (igual que tarjetas: considerar pagos pendientes como covered)
     let status: 'covered' | 'not_programmed' | 'overdue';
-    if (lineInstance?.status === 'paid') {
-      status = 'covered';
-    } else if (adjustedDaysUntilDue < 0) {
+    if (adjustedDaysUntilDue < 0 && !hasProgrammedPayment) {
       status = 'overdue';
+    } else if (hasProgrammedPayment) {
+      status = 'covered';
     } else {
       status = 'not_programmed';
     }
