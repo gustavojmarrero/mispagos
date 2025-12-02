@@ -18,6 +18,7 @@ import { useServices } from '@/hooks/useServices';
 import { useBanks } from '@/hooks/useBanks';
 import { useServiceLines } from '@/hooks/useServiceLines';
 import { generateCurrentAndNextMonthInstances, updateExistingInstances } from '@/lib/paymentInstances';
+import { analyzeServiceLineBillingCycles } from '@/lib/dashboardMetrics';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -151,6 +152,9 @@ export function Payments() {
   // Hook para obtener todas las líneas de servicio (para mostrar sub-filas)
   const { serviceLines: allServiceLines } = useServiceLines({ activeOnly: false });
 
+  // Estado para instancias de pago (para calcular estado del ciclo vigente)
+  const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
+
   const [amountInput, setAmountInput] = useState('');
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [duplicatePayment, setDuplicatePayment] = useState<ScheduledPayment | null>(null);
@@ -187,7 +191,25 @@ export function Payments() {
   useEffect(() => {
     fetchPayments();
     fetchCards();
+    fetchPaymentInstances();
   }, [currentUser]);
+
+  // Calcular estado del ciclo vigente para cada línea de servicio
+  const lineStatusMap = useMemo(() => {
+    if (allServiceLines.length === 0 || paymentInstances.length === 0) return {};
+
+    const analysis = analyzeServiceLineBillingCycles(
+      allServiceLines.filter(l => l.isActive),
+      services,
+      payments,
+      paymentInstances
+    );
+
+    return analysis.reduce((acc, item) => {
+      acc[item.serviceLine.id] = item.currentPeriod.status;
+      return acc;
+    }, {} as Record<string, 'covered' | 'not_programmed' | 'overdue'>);
+  }, [allServiceLines, services, payments, paymentInstances]);
 
   // Preseleccionar tarjeta si viene cardId en la URL (desde Dashboard)
   useEffect(() => {
@@ -304,6 +326,30 @@ export function Payments() {
       console.error('Error fetching payments:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPaymentInstances = async () => {
+    if (!currentUser) return;
+
+    try {
+      const instancesQuery = query(
+        collection(db, 'payment_instances'),
+        where('householdId', '==', currentUser.householdId)
+      );
+      const snapshot = await getDocs(instancesQuery);
+      const instancesData = snapshot.docs.map((doc) => ({
+        ...doc.data(),
+        id: doc.id,
+        dueDate: doc.data().dueDate?.toDate() || new Date(),
+        paidDate: doc.data().paidDate?.toDate(),
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+      })) as PaymentInstance[];
+
+      setPaymentInstances(instancesData);
+    } catch (error) {
+      console.error('Error fetching payment instances:', error);
     }
   };
 
@@ -1404,6 +1450,7 @@ export function Payments() {
                 getServicePaymentMethod={getServicePaymentMethod}
                 serviceLine={serviceLine}
                 showServiceLine={!!payment.serviceLineId && !!serviceLine}
+                lineStatus={serviceLine ? lineStatusMap[serviceLine.id] : undefined}
               />
             );
           })

@@ -16,6 +16,8 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useServices } from '@/hooks/useServices';
 import { useBanks } from '@/hooks/useBanks';
+import { useServiceLines } from '@/hooks/useServiceLines';
+import { analyzeServiceLineBillingCycles } from '@/lib/dashboardMetrics';
 import { CardDetailSheet } from '@/components/cards/CardDetailSheet';
 import { PaymentRow } from '@/components/payment/PaymentRow';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,6 +51,7 @@ import type {
   PaymentInstance,
   Card as CardType,
   PartialPayment,
+  ScheduledPayment,
 } from '@/lib/types';
 import {
   Calendar,
@@ -91,9 +94,11 @@ export function PaymentCalendar() {
   const { currentUser } = useAuth();
   const { services } = useServices();
   const { banks } = useBanks();
+  const { serviceLines: allServiceLines } = useServiceLines({ activeOnly: false });
   const [searchParams] = useSearchParams();
   const [instances, setInstances] = useState<PaymentInstance[]>([]);
   const [cards, setCards] = useState<CardType[]>([]);
+  const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingInstance, setEditingInstance] = useState<PaymentInstance | null>(null);
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -115,7 +120,25 @@ export function PaymentCalendar() {
   useEffect(() => {
     fetchInstances();
     fetchCards();
+    fetchScheduledPayments();
   }, [currentUser]);
+
+  // Calcular estado del ciclo vigente para cada línea de servicio
+  const lineStatusMap = useMemo(() => {
+    if (allServiceLines.length === 0 || instances.length === 0) return {};
+
+    const analysis = analyzeServiceLineBillingCycles(
+      allServiceLines.filter(l => l.isActive),
+      services,
+      scheduledPayments,
+      instances
+    );
+
+    return analysis.reduce((acc, item) => {
+      acc[item.serviceLine.id] = item.currentPeriod.status;
+      return acc;
+    }, {} as Record<string, 'covered' | 'not_programmed' | 'overdue'>);
+  }, [allServiceLines, services, scheduledPayments, instances]);
 
   // Leer query params para filtro de fechas (navegación desde Reports)
   useEffect(() => {
@@ -148,6 +171,29 @@ export function PaymentCalendar() {
       setCards(cardsData);
     } catch (error) {
       console.error('Error fetching cards:', error);
+    }
+  };
+
+  const fetchScheduledPayments = async () => {
+    if (!currentUser) return;
+
+    try {
+      const paymentsQuery = query(
+        collection(db, 'scheduled_payments'),
+        where('householdId', '==', currentUser.householdId)
+      );
+      const snapshot = await getDocs(paymentsQuery);
+      const paymentsData = snapshot.docs.map((doc) => ({
+        ...doc.data(),
+        id: doc.id,
+        createdAt: doc.data().createdAt?.toDate() || new Date(),
+        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
+        paymentDate: doc.data().paymentDate?.toDate(),
+      })) as ScheduledPayment[];
+
+      setScheduledPayments(paymentsData);
+    } catch (error) {
+      console.error('Error fetching scheduled payments:', error);
     }
   };
 
@@ -1099,43 +1145,52 @@ export function PaymentCalendar() {
             </CardHeader>
             <CardContent className="pt-4">
               <div className="space-y-2">
-                {group.instances.map((instance) => (
-                  <PaymentRow
-                    key={instance.id}
-                    variant="calendar"
-                    data={{
-                      id: instance.id,
-                      description: instance.description,
-                      amount: instance.amount,
-                      dueDate: instance.dueDate,
-                      paymentType: instance.paymentType,
-                      cardId: instance.cardId,
-                      serviceId: instance.serviceId,
-                      status: instance.status,
-                      remainingAmount: instance.remainingAmount,
-                      paidAmount: instance.paidAmount,
-                      partialPayments: instance.partialPayments,
-                      notes: instance.notes,
-                    }}
-                    actions={{
-                      onMarkPaid: () => handleMarkAsPaid(instance),
-                      onPartialPayment: () => handleOpenPartialPayment(instance),
-                      onAdjust: () => handleOpenAdjust(instance),
-                      onCancel: () => handleCancelPayment(instance),
-                      onUnmark: () => handleUnmarkAsPaid(instance),
-                      onDeletePartial: (_, paymentId) => handleDeletePartialPayment(instance, paymentId),
-                      onViewCard: (cardId) => {
-                        const card = cards.find(c => c.id === cardId);
-                        if (card) setViewingCard(card);
-                      },
-                    }}
-                    isSelected={selectedPayments.has(instance.id)}
-                    onSelect={togglePaymentSelection}
-                    getCardName={getCardName}
-                    getServiceName={getServiceName}
-                    getServicePaymentMethod={getServicePaymentMethod}
-                  />
-                ))}
+                {group.instances.map((instance) => {
+                  const serviceLine = instance.serviceLineId
+                    ? allServiceLines.find((l) => l.id === instance.serviceLineId)
+                    : null;
+
+                  return (
+                    <PaymentRow
+                      key={instance.id}
+                      variant="calendar"
+                      data={{
+                        id: instance.id,
+                        description: instance.description,
+                        amount: instance.amount,
+                        dueDate: instance.dueDate,
+                        paymentType: instance.paymentType,
+                        cardId: instance.cardId,
+                        serviceId: instance.serviceId,
+                        status: instance.status,
+                        remainingAmount: instance.remainingAmount,
+                        paidAmount: instance.paidAmount,
+                        partialPayments: instance.partialPayments,
+                        notes: instance.notes,
+                      }}
+                      actions={{
+                        onMarkPaid: () => handleMarkAsPaid(instance),
+                        onPartialPayment: () => handleOpenPartialPayment(instance),
+                        onAdjust: () => handleOpenAdjust(instance),
+                        onCancel: () => handleCancelPayment(instance),
+                        onUnmark: () => handleUnmarkAsPaid(instance),
+                        onDeletePartial: (_, paymentId) => handleDeletePartialPayment(instance, paymentId),
+                        onViewCard: (cardId) => {
+                          const card = cards.find(c => c.id === cardId);
+                          if (card) setViewingCard(card);
+                        },
+                      }}
+                      isSelected={selectedPayments.has(instance.id)}
+                      onSelect={togglePaymentSelection}
+                      getCardName={getCardName}
+                      getServiceName={getServiceName}
+                      getServicePaymentMethod={getServicePaymentMethod}
+                      serviceLine={serviceLine}
+                      showServiceLine={!!instance.serviceLineId && !!serviceLine}
+                      lineStatus={serviceLine ? lineStatusMap[serviceLine.id] : undefined}
+                    />
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

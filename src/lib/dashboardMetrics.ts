@@ -647,14 +647,14 @@ export function analyzeServiceLineBillingCycles(
     const hasProgrammedPayment = hasScheduledPayment || !!lineInstance;
     const programmedAmount = lineInstance?.amount || 0;
 
-    // Determinar status (igual que tarjetas)
+    // Determinar status basado en el estado REAL del pago
     let status: 'covered' | 'not_programmed' | 'overdue';
     if (daysUntilDue < 0) {
       status = 'overdue';
-    } else if (hasProgrammedPayment) {
-      status = 'covered';
+    } else if (lineInstance?.status === 'paid') {
+      status = 'covered';  // Solo si está realmente pagado
     } else {
-      status = 'not_programmed';
+      status = 'not_programmed';  // Pendiente o sin programar
     }
 
     return {

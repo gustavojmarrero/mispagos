@@ -1,4 +1,4 @@
-import { CreditCard, Store, Check, Plus, Edit, X, RotateCcw, Trash2, Cable } from 'lucide-react';
+import { CreditCard, Store, Check, Plus, Edit, X, RotateCcw, Trash2, Cable, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -60,6 +60,8 @@ interface PaymentRowProps {
   // Sub-fila para línea de servicio
   serviceLine?: ServiceLine | null;
   showServiceLine?: boolean;
+  // Estado del ciclo vigente de la línea
+  lineStatus?: 'covered' | 'not_programmed' | 'overdue';
 }
 
 // Subcomponente: Acciones del Calendario
@@ -248,6 +250,7 @@ export function PaymentRow({
   getServicePaymentMethod,
   serviceLine,
   showServiceLine = false,
+  lineStatus,
 }: PaymentRowProps) {
   const Icon = data.paymentType === 'card_payment' ? CreditCard : Store;
   const isPaidByCard =
@@ -402,11 +405,30 @@ export function PaymentRow({
       {/* Sub-fila para línea de servicio */}
       {showServiceLine && serviceLine && (
         <div className="ml-8 mt-2 p-3 bg-muted/30 rounded-lg border-l-2 border-primary/30">
-          <div className="flex items-center gap-2 text-sm">
-            <Cable className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium">{serviceLine.name}</span>
-            {serviceLine.lineNumber && (
-              <span className="text-muted-foreground">({serviceLine.lineNumber})</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              <Cable className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium">{serviceLine.name}</span>
+              {serviceLine.lineNumber && (
+                <span className="text-muted-foreground">({serviceLine.lineNumber})</span>
+              )}
+            </div>
+            {/* Badge de estado del ciclo vigente */}
+            {lineStatus && (
+              <div className={cn(
+                'flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full',
+                lineStatus === 'covered' && 'bg-green-100 text-green-700',
+                lineStatus === 'not_programmed' && 'bg-yellow-100 text-yellow-700',
+                lineStatus === 'overdue' && 'bg-red-100 text-red-700'
+              )}>
+                {lineStatus === 'covered' && <CheckCircle2 className="h-3 w-3" />}
+                {lineStatus === 'not_programmed' && <Clock className="h-3 w-3" />}
+                {lineStatus === 'overdue' && <AlertCircle className="h-3 w-3" />}
+                <span>
+                  {lineStatus === 'covered' ? 'Pagado' :
+                   lineStatus === 'not_programmed' ? 'Pendiente' : 'Vencido'}
+                </span>
+              </div>
             )}
           </div>
           <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
