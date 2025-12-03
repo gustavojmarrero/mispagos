@@ -20,7 +20,7 @@ import { useServiceLines } from '@/hooks/useServiceLines';
 import { analyzeServiceLineBillingCycles } from '@/lib/dashboardMetrics';
 import { CardDetailSheet } from '@/components/cards/CardDetailSheet';
 import { PaymentRow } from '@/components/payment/PaymentRow';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -1018,100 +1018,100 @@ export function PaymentCalendar() {
       </AlertDialog>
 
       {/* Partial Payment Modal */}
-      {showPartialPaymentModal && editingInstance && (
-        <Card className="border-blue-600 shadow-lg">
-          <CardHeader className="bg-gradient-to-r from-blue-500/10 to-transparent">
-            <CardTitle className="flex items-center gap-2">
+      <AlertDialog open={showPartialPaymentModal} onOpenChange={(open) => {
+        if (!open) {
+          setShowPartialPaymentModal(false);
+          setEditingInstance(null);
+          setPartialAmount('');
+          setPartialNotes('');
+        }
+      }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
               <Plus className="h-5 w-5 text-blue-600" />
               Registrar Pago Parcial
-            </CardTitle>
-            <CardDescription>{editingInstance.description}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-4">
-            {/* Información del pago */}
-            <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Monto total:</span>
-                <span className="font-semibold">{formatCurrency(editingInstance.amount)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Pagado hasta ahora:</span>
-                <span className="font-semibold text-green-600">
-                  {formatCurrency(editingInstance.paidAmount || 0)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Restante:</span>
-                <span className="font-semibold text-blue-600">
-                  {formatCurrency(editingInstance.remainingAmount ?? editingInstance.amount)}
-                </span>
-              </div>
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4 pt-4">
+                <p className="text-sm text-muted-foreground">{editingInstance?.description}</p>
 
-              {/* Progress bar */}
-              {(editingInstance.paidAmount || 0) > 0 && (
-                <div className="mt-3">
-                  <Progress
-                    value={((editingInstance.paidAmount || 0) / editingInstance.amount) * 100}
-                    className="h-2"
-                  />
-                  <p className="text-xs text-muted-foreground text-center mt-1">
-                    {Math.round(((editingInstance.paidAmount || 0) / editingInstance.amount) * 100)}% completado
+                {/* Información del pago */}
+                <div className="bg-muted/50 rounded-lg p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Monto total:</span>
+                    <span className="font-semibold">{formatCurrency(editingInstance?.amount || 0)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Pagado hasta ahora:</span>
+                    <span className="font-semibold text-green-600">
+                      {formatCurrency(editingInstance?.paidAmount || 0)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Restante:</span>
+                    <span className="font-semibold text-blue-600">
+                      {formatCurrency(editingInstance?.remainingAmount ?? (editingInstance?.amount || 0))}
+                    </span>
+                  </div>
+
+                  {/* Progress bar */}
+                  {(editingInstance?.paidAmount || 0) > 0 && (
+                    <div className="mt-3">
+                      <Progress
+                        value={((editingInstance?.paidAmount || 0) / (editingInstance?.amount || 1)) * 100}
+                        className="h-2"
+                      />
+                      <p className="text-xs text-muted-foreground text-center mt-1">
+                        {Math.round(((editingInstance?.paidAmount || 0) / (editingInstance?.amount || 1)) * 100)}% completado
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Form */}
+                <div className="space-y-2">
+                  <Label htmlFor="partialAmount">Monto a abonar *</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
+                      $
+                    </span>
+                    <Input
+                      id="partialAmount"
+                      type="text"
+                      value={partialAmount}
+                      onChange={(e) => setPartialAmount(e.target.value)}
+                      onFocus={(e) => setTimeout(() => e.target.select(), 0)}
+                      placeholder="0.00"
+                      className="pl-7"
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Máximo: {formatCurrency(editingInstance?.remainingAmount ?? (editingInstance?.amount || 0))}
                   </p>
                 </div>
-              )}
-            </div>
 
-            {/* Form */}
-            <div className="space-y-2">
-              <Label htmlFor="partialAmount">Monto a abonar *</Label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
-                  $
-                </span>
-                <Input
-                  id="partialAmount"
-                  type="text"
-                  value={partialAmount}
-                  onChange={(e) => setPartialAmount(e.target.value)}
-                  onFocus={(e) => setTimeout(() => e.target.select(), 0)}
-                  placeholder="0.00"
-                  className="pl-7"
-                />
+                <div className="space-y-2">
+                  <Label htmlFor="partialNotes">Notas (opcional)</Label>
+                  <Input
+                    id="partialNotes"
+                    value={partialNotes}
+                    onChange={(e) => setPartialNotes(e.target.value)}
+                    placeholder="Ej: Primer abono"
+                  />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Máximo: {formatCurrency(editingInstance.remainingAmount ?? editingInstance.amount)}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="partialNotes">Notas (opcional)</Label>
-              <Input
-                id="partialNotes"
-                value={partialNotes}
-                onChange={(e) => setPartialNotes(e.target.value)}
-                placeholder="Ej: Primer abono"
-              />
-            </div>
-
-            <div className="flex flex-col sm:flex-row justify-end gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowPartialPaymentModal(false);
-                  setEditingInstance(null);
-                }}
-                className="w-full sm:w-auto"
-              >
-                Cancelar
-              </Button>
-              <Button onClick={handleSavePartialPayment} className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700">
-                <Plus className="h-4 w-4 mr-1" />
-                Registrar Abono
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleSavePartialPayment} className="bg-blue-600 hover:bg-blue-700">
+              <Plus className="h-4 w-4 mr-1" />
+              Registrar Abono
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Month Groups */}
       {monthGroups.length === 0 ? (
