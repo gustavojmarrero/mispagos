@@ -848,7 +848,13 @@ export function PaymentCalendar() {
   const selectedTotal = useMemo(() => {
     return instances
       .filter(i => selectedPayments.has(i.id))
-      .reduce((sum, i) => sum + i.amount, 0);
+      .reduce((sum, i) => {
+        // Para pagos parciales, usar remainingAmount; para otros, usar amount
+        const amountToPay = i.status === 'partial' && i.remainingAmount !== undefined
+          ? i.remainingAmount
+          : i.amount;
+        return sum + amountToPay;
+      }, 0);
   }, [instances, selectedPayments]);
 
   const getServicePaymentMethod = (serviceId: string) => {
