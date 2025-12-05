@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   collection,
   query,
@@ -43,6 +44,7 @@ import {
 
 export function Services() {
   const { currentUser } = useAuth();
+  const [searchParams] = useSearchParams();
   const [services, setServices] = useState<Service[]>([]);
   const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,6 +72,17 @@ export function Services() {
     fetchServices();
     fetchPaymentInstances();
   }, [currentUser]);
+
+  // Abrir panel de servicio automáticamente si viene viewService en la URL (desde alertas del Dashboard)
+  useEffect(() => {
+    const viewServiceId = searchParams.get('viewService');
+    if (viewServiceId && services.length > 0 && !loading) {
+      const service = services.find(s => s.id === viewServiceId);
+      if (service) {
+        setViewingService(service);
+      }
+    }
+  }, [searchParams, services, loading]);
 
   const fetchServices = async (): Promise<Service[]> => {
     if (!currentUser) return [];

@@ -152,6 +152,20 @@ export function PaymentCalendar() {
     }
   }, [searchParams]);
 
+  // Abrir modal de ajuste automáticamente si viene instanceId en la URL (desde alertas del Dashboard)
+  useEffect(() => {
+    const instanceId = searchParams.get('instanceId');
+    if (instanceId && instances.length > 0 && !loading) {
+      const instance = instances.find(i => i.id === instanceId);
+      if (instance) {
+        setEditingInstance(instance);
+        setAdjustAmount(instance.amount.toString());
+        setAdjustNotes(instance.notes || '');
+        setShowAdjustModal(true);
+      }
+    }
+  }, [searchParams, instances, loading]);
+
   const fetchCards = async () => {
     if (!currentUser) return;
 

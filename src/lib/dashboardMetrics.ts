@@ -787,8 +787,8 @@ export function generateSmartAlerts(
       description: `Cortó hace ${daysAfterCutoff} día${daysAfterCutoff !== 1 ? 's' : ''}, ingresa el monto del recibo`,
       action: {
         label: 'Actualizar monto',
-        route: '/calendar',
-        params: { serviceId: analysis.service.id, instanceId: analysis.currentPeriod.instanceId },
+        route: '/services',
+        params: { viewService: analysis.service.id },
       },
       data: analysis,
       sortValue: daysAfterCutoff,
