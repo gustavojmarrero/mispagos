@@ -288,6 +288,13 @@ export function PaymentCalendar() {
         queryEndDate = new Date(now.getFullYear(), now.getMonth() + 2, 0);
       }
 
+      // Normalizar fechas para incluir el día completo
+      // Crear copias para no mutar customStartDate/customEndDate
+      queryStartDate = new Date(queryStartDate);
+      queryStartDate.setHours(0, 0, 0, 0);
+      queryEndDate = new Date(queryEndDate);
+      queryEndDate.setHours(23, 59, 59, 999);
+
       const instancesQuery = query(
         collection(db, 'payment_instances'),
         where('householdId', '==', currentUser.householdId),
@@ -470,9 +477,11 @@ export function PaymentCalendar() {
       );
     }
 
-    // Filtro de estado - incluir 'partial' en pendientes
+    // Filtro de estado - incluir 'partial' y 'overdue' en pendientes
     if (showPendingOnly) {
-      filtered = filtered.filter((instance) => instance.status === 'pending' || instance.status === 'partial');
+      filtered = filtered.filter((instance) =>
+        instance.status === 'pending' || instance.status === 'partial' || instance.status === 'overdue'
+      );
     }
 
     // Filtro de tipo de pago
