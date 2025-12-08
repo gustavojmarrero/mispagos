@@ -772,8 +772,15 @@ export function generateSmartAlerts(
   });
 
   // 1.5. Alertas de servicios con billing_cycle sin monto después del corte
+  // Excluir servicios que tienen líneas (las alertas se generan a nivel de línea)
+  const servicesWithLines = new Set(
+    serviceLineBillingAnalysis.map((analysis) => analysis.service.id)
+  );
+
   const servicesNeedingAmount = serviceBillingAnalysis.filter(
-    (analysis) => analysis.currentPeriod.status === 'awaiting_amount'
+    (analysis) =>
+      analysis.currentPeriod.status === 'awaiting_amount' &&
+      !servicesWithLines.has(analysis.service.id)
   );
 
   servicesNeedingAmount.forEach((analysis) => {
