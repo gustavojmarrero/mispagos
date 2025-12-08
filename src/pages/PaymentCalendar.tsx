@@ -5,9 +5,9 @@ import {
   query,
   where,
   getDocs,
-  getDoc,
   updateDoc,
   doc,
+  getDoc,
   serverTimestamp,
   Timestamp,
   arrayUnion,
@@ -226,14 +226,14 @@ export function PaymentCalendar() {
 
     try {
       const cardRef = doc(db, 'cards', cardId);
-      const cardSnap = await getDoc(cardRef);
+      const cardDoc = await getDoc(cardRef);
 
-      if (!cardSnap.exists()) {
+      if (!cardDoc.exists()) {
         console.error('Card not found:', cardId);
         return;
       }
 
-      const cardData = cardSnap.data() as CardType;
+      const cardData = cardDoc.data();
       const currentAvailable = cardData.availableCredit || 0;
       const creditLimit = cardData.creditLimit || 0;
 
@@ -242,9 +242,10 @@ export function PaymentCalendar() {
         ? currentAvailable + amount
         : currentAvailable - amount;
 
-      // Calcular nuevo balance (límite - disponible)
+      // Calcular nuevo saldo (límite - disponible)
       const newCurrentBalance = creditLimit - newAvailableCredit;
 
+      // Actualizar en Firestore
       await updateDoc(cardRef, {
         availableCredit: newAvailableCredit,
         currentBalance: newCurrentBalance,
@@ -253,7 +254,7 @@ export function PaymentCalendar() {
         updatedByName: currentUser.name,
       });
 
-      // Actualizar estado local de tarjetas
+      // Actualizar estado local
       setCards(prevCards =>
         prevCards.map(card =>
           card.id === cardId
@@ -1246,6 +1247,7 @@ export function PaymentCalendar() {
         open={!!viewingCard}
         onOpenChange={(open) => !open && setViewingCard(null)}
         banks={banks}
+        allCards={cards}
       />
 
       {/* Barra flotante de selección refinada */}

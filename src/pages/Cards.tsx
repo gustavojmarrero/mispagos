@@ -37,7 +37,7 @@ import {
   formatCLABE,
   unformatCLABE,
 } from '@/lib/utils';
-import type { Card as CardType, CardFormData, CardOwner, PaymentInstance, PaymentStatus } from '@/lib/types';
+import type { Card as CardType, CardFormData, CardOwner, PaymentInstance, PaymentStatus, PhysicalCard } from '@/lib/types';
 import {
   CreditCard,
   Plus,
@@ -75,7 +75,8 @@ export function Cards() {
     dueDay: 0,
     creditLimit: 0,
     currentBalance: 0,
-    physicalCardNumber: '',
+    physicalCardNumber: '', // Deprecated: keep for compatibility
+    physicalCards: [], // New: array of physical cards
     cardType: 'Departamental',
     digitalCardNumber: '',
     clabeAccount: '',
@@ -193,14 +194,14 @@ export function Cards() {
 
     try {
       const cardRef = doc(db, 'cards', cardId);
-      const cardSnap = await getDoc(cardRef);
+      const cardDoc = await getDoc(cardRef);
 
-      if (!cardSnap.exists()) {
+      if (!cardDoc.exists()) {
         console.error('Card not found:', cardId);
         return;
       }
 
-      const cardData = cardSnap.data() as CardType;
+      const cardData = cardDoc.data();
       const currentAvailable = cardData.availableCredit || 0;
       const creditLimit = cardData.creditLimit || 0;
 
@@ -209,9 +210,10 @@ export function Cards() {
         ? currentAvailable + amount
         : currentAvailable - amount;
 
-      // Calcular nuevo balance (límite - disponible)
+      // Calcular nuevo saldo (límite - disponible)
       const newCurrentBalance = creditLimit - newAvailableCredit;
 
+      // Actualizar en Firestore
       await updateDoc(cardRef, {
         availableCredit: newAvailableCredit,
         currentBalance: newCurrentBalance,
@@ -229,7 +231,7 @@ export function Cards() {
         )
       );
 
-      // Si viewingCard es la tarjeta actual, actualizarla también
+      // Actualizar viewingCard si es la misma tarjeta
       if (viewingCard?.id === cardId) {
         setViewingCard(prev => prev ? {
           ...prev,
@@ -453,37 +455,14 @@ export function Cards() {
     }
   };
 
-  const handleCardNumberChange = (value: string) => {
-    const cleaned = unformatCardNumber(value);
-    const digitalCleaned = unformatCardNumber(formData.digitalCardNumber || '');
-
-    let cardType = formData.cardType;
-    let lastDigits = formData.lastDigits;
-
-    if (cleaned.length >= 4) {
-      // Si hay número físico, usarlo para detectar tipo y últimos dígitos
-      cardType = detectCardType(cleaned);
-      lastDigits = cleaned.slice(-4);
-    } else if (digitalCleaned.length >= 4) {
-      // Si no hay físico pero sí digital, usar digital
-      cardType = detectCardType(digitalCleaned);
-      lastDigits = digitalCleaned.slice(-4);
-    }
-
-    setFormData({
-      ...formData,
-      physicalCardNumber: value,
-      cardType,
-      lastDigits,
-    });
-  };
-
   const handleDigitalCardNumberChange = (value: string) => {
     const cleaned = unformatCardNumber(value);
-    const physicalCleaned = unformatCardNumber(formData.physicalCardNumber || '');
 
-    // Solo usar digital para tipo y lastDigits si NO hay tarjeta física
-    const shouldUseDigital = physicalCleaned.length < 4 && cleaned.length >= 4;
+    // Solo usar digital para tipo y lastDigits si NO hay tarjetas físicas
+    const hasPhysicalCards = formData.physicalCards && formData.physicalCards.length > 0 &&
+      formData.physicalCards.some(pc => unformatCardNumber(pc.number).length >= 4);
+
+    const shouldUseDigital = !hasPhysicalCards && cleaned.length >= 4;
 
     setFormData({
       ...formData,
@@ -515,9 +494,26 @@ export function Cards() {
     setSaving(true);
     try {
       // Preparar datos sin formato para guardar en la base de datos
+      // Procesar physicalCards: limpiar números
+      const cleanedPhysicalCards = (formData.physicalCards || [])
+        .filter(card => card.number.trim() !== '') // Filtrar tarjetas sin número
+        .map(card => ({
+          id: card.id,
+          number: unformatCardNumber(card.number),
+          digitalNumber: card.digitalNumber ? unformatCardNumber(card.digitalNumber) : undefined,
+          label: card.label.trim(),
+        }))
+        .map(card => {
+          // Limpiar campos undefined para Firestore
+          const cleanCard: any = { id: card.id, number: card.number, label: card.label };
+          if (card.digitalNumber) cleanCard.digitalNumber = card.digitalNumber;
+          return cleanCard;
+        });
+
       const dataToSave = {
         ...formData,
         physicalCardNumber: unformatCardNumber(formData.physicalCardNumber || ''),
+        physicalCards: cleanedPhysicalCards,
         digitalCardNumber: unformatCardNumber(formData.digitalCardNumber || ''),
         clabeAccount: unformatCLABE(formData.clabeAccount || ''),
       };
@@ -531,6 +527,7 @@ export function Cards() {
         });
         toast.success('Tarjeta actualizada exitosamente');
       } else {
+        // Crear nueva tarjeta
         await addDoc(collection(db, 'cards'), {
           ...dataToSave,
           userId: currentUser.id, // Mantener por compatibilidad
@@ -571,15 +568,37 @@ export function Cards() {
     let cardType = card.cardType;
     let lastDigits = card.lastDigits;
 
-    const physicalCleaned = card.physicalCardNumber || '';
-    const digitalCleaned = card.digitalCardNumber || '';
+    // Migrar datos: si hay physicalCardNumber pero no physicalCards, crear el primer elemento
+    let physicalCards: PhysicalCard[] = card.physicalCards || [];
+    if (physicalCards.length === 0 && card.physicalCardNumber) {
+      physicalCards = [{
+        id: crypto.randomUUID(),
+        number: formatCardNumber(card.physicalCardNumber),
+        digitalNumber: card.digitalCardNumber ? formatCardNumber(card.digitalCardNumber) : '',
+        label: card.owner, // Usar el owner como label por defecto
+      }];
+    } else {
+      // Formatear los números para edición
+      physicalCards = physicalCards.map(pc => ({
+        ...pc,
+        number: formatCardNumber(pc.number),
+        digitalNumber: pc.digitalNumber ? formatCardNumber(pc.digitalNumber) : '',
+      }));
+    }
 
-    if (physicalCleaned.length >= 4) {
-      cardType = detectCardType(physicalCleaned);
-      lastDigits = physicalCleaned.slice(-4);
-    } else if (digitalCleaned.length >= 4) {
-      cardType = detectCardType(digitalCleaned);
-      lastDigits = digitalCleaned.slice(-4);
+    // Detectar tipo de la primera tarjeta física o digital
+    if (physicalCards.length > 0) {
+      const firstCardCleaned = unformatCardNumber(physicalCards[0].number);
+      if (firstCardCleaned.length >= 4) {
+        cardType = detectCardType(firstCardCleaned);
+        lastDigits = firstCardCleaned.slice(-4);
+      }
+    } else {
+      const digitalCleaned = card.digitalCardNumber || '';
+      if (digitalCleaned.length >= 4) {
+        cardType = detectCardType(digitalCleaned);
+        lastDigits = digitalCleaned.slice(-4);
+      }
     }
 
     setFormData({
@@ -590,6 +609,7 @@ export function Cards() {
       creditLimit: card.creditLimit,
       currentBalance: card.currentBalance,
       physicalCardNumber: card.physicalCardNumber || '',
+      physicalCards,
       cardType,
       digitalCardNumber: card.digitalCardNumber || '',
       clabeAccount: card.clabeAccount || '',
@@ -623,6 +643,7 @@ export function Cards() {
       creditLimit: 0,
       currentBalance: 0,
       physicalCardNumber: '',
+      physicalCards: [],
       cardType: 'Departamental',
       digitalCardNumber: '',
       clabeAccount: '',
@@ -825,10 +846,12 @@ export function Cards() {
                   <CreditCard className="h-5 w-5" />
                   Números y Cuentas
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="physicalCardNumber">
-                      Número tarjeta física
+
+                {/* Tarjetas Físicas - Lista dinámica */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">
+                      Tarjetas Físicas
                       {formData.cardType !== 'Departamental' && (
                         <Badge
                           variant={formData.cardType.toLowerCase() as any}
@@ -838,28 +861,181 @@ export function Cards() {
                         </Badge>
                       )}
                     </Label>
-                    <InputWithCopy
-                      id="physicalCardNumber"
-                      value={formData.physicalCardNumber || ''}
-                      onChange={handleCardNumberChange}
-                      placeholder="1234 5678 9012 3456"
-                      icon={CreditCard}
-                      maxLength={19}
-                      formatValue={formatCardNumber}
-                      unformatValue={unformatCardNumber}
-                      copyMessage="Número de tarjeta física copiado"
-                    />
-                    {formData.lastDigits && (
-                      <p className="text-xs text-muted-foreground">
-                        Últimos 4 dígitos: **** {formData.lastDigits}
-                      </p>
-                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const newCard: PhysicalCard = {
+                          id: crypto.randomUUID(),
+                          number: '',
+                          label: '',
+                        };
+                        setFormData({
+                          ...formData,
+                          physicalCards: [...(formData.physicalCards || []), newCard],
+                        });
+                      }}
+                      className="h-7 text-xs"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Agregar tarjeta
+                    </Button>
                   </div>
 
+                  {(!formData.physicalCards || formData.physicalCards.length === 0) && (
+                    <div className="bg-muted/50 rounded-lg p-4 text-center border border-dashed">
+                      <CreditCard className="h-6 w-6 text-muted-foreground mx-auto mb-2" />
+                      <p className="text-sm text-muted-foreground">
+                        No hay tarjetas físicas registradas
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Haz clic en "Agregar tarjeta" para añadir una
+                      </p>
+                    </div>
+                  )}
+
+                  {formData.physicalCards && formData.physicalCards.length > 0 && (
+                    <div className="space-y-3">
+                      {formData.physicalCards.map((physicalCard, index) => (
+                        <div
+                          key={physicalCard.id}
+                          className="p-3 bg-muted/30 rounded-lg border space-y-2"
+                        >
+                          {/* Header con etiqueta y boton eliminar */}
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex-1">
+                              <Label className="text-xs text-muted-foreground">Etiqueta (titular)</Label>
+                              <Input
+                                value={physicalCard.label}
+                                onChange={(e) => {
+                                  const updatedCards = [...(formData.physicalCards || [])];
+                                  updatedCards[index] = { ...physicalCard, label: e.target.value };
+                                  setFormData({ ...formData, physicalCards: updatedCards });
+                                }}
+                                placeholder="Ej: Gustavo, Sandra, Adicional"
+                                className="mt-1"
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const updatedCards = formData.physicalCards?.filter((_, i) => i !== index) || [];
+
+                                // Recalculate cardType and lastDigits
+                                let cardType = formData.cardType;
+                                let lastDigits = formData.lastDigits;
+                                if (updatedCards.length > 0) {
+                                  const firstNumber = unformatCardNumber(updatedCards[0].number);
+                                  if (firstNumber.length >= 4) {
+                                    cardType = detectCardType(firstNumber);
+                                    lastDigits = firstNumber.slice(-4);
+                                  }
+                                } else {
+                                  const digitalCleaned = unformatCardNumber(formData.digitalCardNumber || '');
+                                  if (digitalCleaned.length >= 4) {
+                                    cardType = detectCardType(digitalCleaned);
+                                    lastDigits = digitalCleaned.slice(-4);
+                                  }
+                                }
+
+                                setFormData({
+                                  ...formData,
+                                  physicalCards: updatedCards,
+                                  cardType,
+                                  lastDigits,
+                                });
+                              }}
+                              className="h-8 w-8 p-0 mt-5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+
+                          {/* Numeros de tarjeta fisica y digital */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                                <CreditCard className="h-3 w-3" />
+                                Tarjeta Fisica
+                              </Label>
+                              <InputWithCopy
+                                value={physicalCard.number}
+                                onChange={(value) => {
+                                  const cleaned = unformatCardNumber(value);
+                                  const updatedCards = [...(formData.physicalCards || [])];
+                                  updatedCards[index] = { ...physicalCard, number: value };
+
+                                  // Auto-detect card type from first card
+                                  let cardType = formData.cardType;
+                                  let lastDigits = formData.lastDigits;
+                                  if (index === 0 && cleaned.length >= 4) {
+                                    cardType = detectCardType(cleaned);
+                                    lastDigits = cleaned.slice(-4);
+                                  } else if (index === 0 && cleaned.length < 4) {
+                                    // Check other sources for lastDigits
+                                    const digitalCleaned = unformatCardNumber(formData.digitalCardNumber || '');
+                                    if (digitalCleaned.length >= 4) {
+                                      cardType = detectCardType(digitalCleaned);
+                                      lastDigits = digitalCleaned.slice(-4);
+                                    }
+                                  }
+
+                                  setFormData({
+                                    ...formData,
+                                    physicalCards: updatedCards,
+                                    cardType,
+                                    lastDigits,
+                                  });
+                                }}
+                                placeholder="1234 5678 9012 3456"
+                                icon={CreditCard}
+                                maxLength={19}
+                                formatValue={formatCardNumber}
+                                unformatValue={unformatCardNumber}
+                                copyMessage="Numero de tarjeta fisica copiado"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                                <Smartphone className="h-3 w-3" />
+                                Tarjeta Digital
+                              </Label>
+                              <InputWithCopy
+                                value={physicalCard.digitalNumber || ''}
+                                onChange={(value) => {
+                                  const updatedCards = [...(formData.physicalCards || [])];
+                                  updatedCards[index] = { ...physicalCard, digitalNumber: value };
+                                  setFormData({ ...formData, physicalCards: updatedCards });
+                                }}
+                                placeholder="1234 5678 9012 3456"
+                                icon={Smartphone}
+                                maxLength={19}
+                                formatValue={formatCardNumber}
+                                unformatValue={unformatCardNumber}
+                                copyMessage="Numero de tarjeta digital copiado"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {formData.lastDigits && (
+                    <p className="text-xs text-muted-foreground">
+                      Últimos 4 dígitos (principal): **** {formData.lastDigits}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2 md:col-span-2">
                     <Label htmlFor="digitalCardNumber">
                       Número tarjeta digital
-                      {!formData.physicalCardNumber && formData.cardType !== 'Departamental' && (
+                      {(!formData.physicalCards || formData.physicalCards.length === 0) && formData.cardType !== 'Departamental' && (
                         <Badge
                           variant={formData.cardType.toLowerCase() as any}
                           className="ml-2"
@@ -1203,6 +1379,7 @@ export function Cards() {
         open={!!viewingCard}
         onOpenChange={(open) => !open && setViewingCard(null)}
         banks={banks}
+        allCards={cards}
         onEdit={handleEditFromView}
       >
         {/* Pagos Programados */}

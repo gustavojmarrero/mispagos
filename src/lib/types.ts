@@ -10,6 +10,14 @@ export interface User {
 export type CardType = "Visa" | "Mastercard" | "Amex" | "Departamental";
 export type CardOwner = "Guatever" | "Sandra" | "Gustavo";
 
+// Tipo para múltiples tarjetas físicas en una cuenta
+export interface PhysicalCard {
+  id: string;           // UUID único
+  number: string;       // 16 dígitos sin formato (tarjeta física)
+  digitalNumber?: string; // 16 dígitos sin formato (tarjeta digital asociada)
+  label: string;        // Etiqueta (ej: "Gustavo", "Sandra", "Adicional 1")
+}
+
 export interface Card {
   id: string;
   userId: string; // Deprecated: mantener por compatibilidad
@@ -26,8 +34,9 @@ export interface Card {
   createdByName: string; // Nombre visible del creador
   updatedBy: string; // userId de quien actualizó
   updatedByName: string; // Nombre visible del último editor
-  // Nuevos campos
-  physicalCardNumber?: string;
+  // Campos de tarjeta
+  physicalCardNumber?: string; // DEPRECATED: usar physicalCards
+  physicalCards?: PhysicalCard[]; // Múltiples tarjetas físicas con etiquetas
   cardType: CardType;
   digitalCardNumber?: string;
   clabeAccount?: string;
@@ -44,8 +53,9 @@ export interface CardFormData {
   dueDay: number;
   creditLimit: number;
   currentBalance: number;
-  // Nuevos campos
-  physicalCardNumber?: string;
+  // Campos de tarjeta
+  physicalCardNumber?: string; // DEPRECATED: usar physicalCards
+  physicalCards?: PhysicalCard[]; // Múltiples tarjetas físicas
   cardType: CardType;
   digitalCardNumber?: string;
   clabeAccount?: string;

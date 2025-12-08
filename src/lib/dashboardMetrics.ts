@@ -917,7 +917,9 @@ export function generateSmartAlerts(
 
   // 5. Alertas de crédito bajo (<20%)
   const lowCreditCards = cards.filter(
-    (card) => (card.availableCredit / card.creditLimit) * 100 < 20
+    (card) =>
+      card.creditLimit > 0 &&
+      (card.availableCredit / card.creditLimit) * 100 < 20
   );
 
   lowCreditCards.forEach((card) => {

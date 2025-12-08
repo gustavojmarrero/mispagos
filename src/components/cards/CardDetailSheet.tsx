@@ -17,6 +17,7 @@ interface CardDetailSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   banks: Bank[];
+  allCards?: Card[]; // Para mostrar información de vinculación
   onEdit?: (card: Card) => void;
   children?: React.ReactNode;
 }
@@ -26,6 +27,7 @@ export function CardDetailSheet({
   open,
   onOpenChange,
   banks,
+  allCards: _allCards = [], // Keep for interface compatibility
   onEdit,
   children,
 }: CardDetailSheetProps) {
@@ -72,11 +74,68 @@ export function CardDetailSheet({
           </div>
 
           {/* Números de tarjeta */}
-          {(card.physicalCardNumber || card.digitalCardNumber || card.clabeAccount) && (
+          {(card.physicalCards?.length || card.physicalCardNumber || card.digitalCardNumber || card.clabeAccount) && (
             <div className="space-y-3">
               <h4 className="text-sm font-medium text-muted-foreground">Números</h4>
               <div className="space-y-2">
-                {card.physicalCardNumber && (
+                {/* Tarjetas físicas - nuevo formato con array */}
+                {card.physicalCards && card.physicalCards.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground font-medium">
+                      Tarjetas ({card.physicalCards.length} {card.physicalCards.length === 1 ? 'titular' : 'titulares'})
+                    </p>
+                    {card.physicalCards.map((pc, index) => (
+                      <div key={pc.id || index} className="bg-muted/50 p-3 rounded-lg space-y-2">
+                        {/* Etiqueta/Titular */}
+                        {pc.label && (
+                          <p className="text-xs font-medium text-primary">{pc.label}</p>
+                        )}
+                        {/* Tarjeta Fisica */}
+                        {pc.number && (
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-muted-foreground">Fisica</p>
+                              <p className="font-mono text-sm">{formatCardNumber(pc.number)}</p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                navigator.clipboard.writeText(pc.number);
+                                toast.success(`Numero de tarjeta fisica ${pc.label ? `(${pc.label})` : ''} copiado`);
+                              }}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                        {/* Tarjeta Digital */}
+                        {pc.digitalNumber && (
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-muted-foreground">Digital</p>
+                              <p className="font-mono text-sm">{formatCardNumber(pc.digitalNumber)}</p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0"
+                              onClick={() => {
+                                navigator.clipboard.writeText(pc.digitalNumber!);
+                                toast.success(`Numero de tarjeta digital ${pc.label ? `(${pc.label})` : ''} copiado`);
+                              }}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {/* Fallback para physicalCardNumber legacy */}
+                {(!card.physicalCards || card.physicalCards.length === 0) && card.physicalCardNumber && (
                   <div className="bg-muted/50 p-3 rounded-lg">
                     <p className="text-xs text-muted-foreground mb-1">Tarjeta Física</p>
                     <div className="flex items-center justify-between gap-2">
