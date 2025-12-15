@@ -759,8 +759,8 @@ export function generateSmartAlerts(
       id: `card-no-payment-${analysis.card.id}`,
       type: 'card_no_payment',
       severity: 'critical',
-      title: `Tarjeta ${getBankName(analysis.card.bankId)} sin pago programado`,
-      description: `${analysis.card.name} cortó hace ${daysAfterClosing} día${daysAfterClosing !== 1 ? 's' : ''} y no tiene pago programado`,
+      title: `Tarjeta ${getBankName(analysis.card.bankId)} ${analysis.card.owner}`,
+      description: `${analysis.card.name} cortó hace ${daysAfterClosing} día${daysAfterClosing !== 1 ? 's' : ''}`,
       action: {
         label: 'Programar pago',
         route: '/payments',
