@@ -757,6 +757,7 @@ export async function updateExistingInstances(
     const updates: any = {
       amount: scheduledPayment.amount,
       description: scheduledPayment.description,
+      serviceLineId: scheduledPayment.serviceLineId || null,
       updatedAt: serverTimestamp(),
       updatedBy,
       updatedByName,
