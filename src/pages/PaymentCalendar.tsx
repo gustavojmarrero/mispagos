@@ -113,6 +113,7 @@ export function PaymentCalendar() {
   // Filtros
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('this_week');
   const [showPendingOnly, setShowPendingOnly] = useState(true);
+  const [excludePayroll, setExcludePayroll] = useState(false);
   const [paymentTypeFilter, setPaymentTypeFilter] = useState<PaymentTypeFilter>('all');
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
@@ -451,6 +452,7 @@ export function PaymentCalendar() {
   const handleResetFilters = () => {
     setTimeFilter('this_week');
     setShowPendingOnly(true);
+    setExcludePayroll(false);
     setPaymentTypeFilter('all');
     setCustomStartDate(null);
     setCustomEndDate(null);
@@ -460,8 +462,11 @@ export function PaymentCalendar() {
    * Verifica si hay filtros no-default activos
    */
   const hasNonDefaultFilters = (): boolean => {
-    return timeFilter !== 'this_week' || !showPendingOnly || paymentTypeFilter !== 'all';
+    return timeFilter !== 'this_week' || !showPendingOnly || excludePayroll || paymentTypeFilter !== 'all';
   };
+
+  // Nombres de servicios que se consideran nóminas
+  const PAYROLL_SERVICE_NAMES = ['Servicio Doméstico', 'Nomina Guatever'];
 
   /**
    * Filtra las instancias según los filtros seleccionados
@@ -490,6 +495,16 @@ export function PaymentCalendar() {
       filtered = filtered.filter((instance) => instance.paymentType === 'card_payment');
     } else if (paymentTypeFilter === 'service') {
       filtered = filtered.filter((instance) => instance.paymentType === 'service_payment');
+    }
+
+    // Filtro de exclusión de nóminas
+    if (excludePayroll) {
+      filtered = filtered.filter((instance) => {
+        if (!instance.serviceId) return true; // No es un servicio, mantener
+        const service = services.find((s) => s.id === instance.serviceId);
+        if (!service) return true; // Servicio no encontrado, mantener
+        return !PAYROLL_SERVICE_NAMES.includes(service.name);
+      });
     }
 
     return filtered;
@@ -949,16 +964,29 @@ export function PaymentCalendar() {
               <span className="text-sm text-muted-foreground">{getDateRangeDescription()}</span>
             )}
 
-            {/* Filtro de pendientes */}
-            <div className="flex items-center gap-2 sm:ml-auto">
-              <Switch
-                id="pending-filter"
-                checked={showPendingOnly}
-                onCheckedChange={setShowPendingOnly}
-              />
-              <Label htmlFor="pending-filter" className="text-sm cursor-pointer">
-                Solo pendientes
-              </Label>
+            {/* Filtros toggle */}
+            <div className="flex items-center gap-4 sm:ml-auto">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="pending-filter"
+                  checked={showPendingOnly}
+                  onCheckedChange={setShowPendingOnly}
+                />
+                <Label htmlFor="pending-filter" className="text-sm cursor-pointer">
+                  Solo pendientes
+                </Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="payroll-filter"
+                  checked={excludePayroll}
+                  onCheckedChange={setExcludePayroll}
+                />
+                <Label htmlFor="payroll-filter" className="text-sm cursor-pointer">
+                  Sin nóminas
+                </Label>
+              </div>
             </div>
 
             {/* Botón reset */}
