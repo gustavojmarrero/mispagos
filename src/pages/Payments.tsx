@@ -474,9 +474,8 @@ export function Payments() {
         // Limpiar campos no necesarios según el tipo
         cardId: formData.paymentType === 'card_payment' ? formData.cardId : null,
         serviceId: formData.paymentType === 'service_payment' ? formData.serviceId : null,
-        // serviceLineId solo para servicios billing_cycle con líneas configuradas
+        // serviceLineId para servicios con líneas configuradas (cualquier frecuencia)
         serviceLineId: formData.paymentType === 'service_payment' &&
-                       formData.frequency === 'billing_cycle' &&
                        formData.serviceLineId ? formData.serviceLineId : null,
         // Para card_payment y billing_cycle: usar paymentDate
         paymentDate: (formData.paymentType === 'card_payment' || formData.frequency === 'billing_cycle')
