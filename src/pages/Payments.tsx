@@ -991,8 +991,9 @@ export function Payments() {
                         </p>
                       )}
 
-                      {/* Selector de línea para servicios con múltiples líneas */}
+                      {/* Selector de línea solo para servicios billing_cycle con líneas */}
                       {formData.serviceId &&
+                       services.find(s => s.id === formData.serviceId)?.serviceType === 'billing_cycle' &&
                        selectedServiceLines.length > 0 && (
                         <div className="space-y-2 mt-3">
                           <Label htmlFor="serviceLineId" className="flex items-center gap-2">
