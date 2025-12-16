@@ -991,9 +991,8 @@ export function Payments() {
                         </p>
                       )}
 
-                      {/* Selector de línea para servicios billing_cycle con múltiples líneas */}
+                      {/* Selector de línea para servicios con múltiples líneas */}
                       {formData.serviceId &&
-                       services.find(s => s.id === formData.serviceId)?.serviceType === 'billing_cycle' &&
                        selectedServiceLines.length > 0 && (
                         <div className="space-y-2 mt-3">
                           <Label htmlFor="serviceLineId" className="flex items-center gap-2">
@@ -1029,7 +1028,7 @@ export function Payments() {
                         </div>
                       )}
 
-                      {/* Mensaje si el servicio billing_cycle no tiene líneas configuradas */}
+                      {/* Mensaje si el servicio no tiene líneas configuradas */}
                       {formData.serviceId &&
                        services.find(s => s.id === formData.serviceId)?.serviceType === 'billing_cycle' &&
                        selectedServiceLines.length === 0 && (
