@@ -613,8 +613,11 @@ export function analyzeServiceLineBillingCycles(
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Solo líneas activas
-  const activeLines = serviceLines.filter(line => line.isActive);
+  // Solo líneas activas de servicios con ciclo de facturación
+  const activeLines = serviceLines.filter(line => {
+    const service = services.find(s => s.id === line.serviceId);
+    return line.isActive && service?.serviceType === 'billing_cycle';
+  });
 
   return activeLines.map(line => {
     const service = services.find(s => s.id === line.serviceId);
