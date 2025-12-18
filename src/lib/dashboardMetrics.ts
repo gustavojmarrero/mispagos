@@ -372,17 +372,23 @@ export function analyzeCardPeriods(
       (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    // Calcular fechas con tolerancia para matching de pagos
+    // Calcular fecha límite con tolerancia para matching de pagos
     const toleranceMs = PAYMENT_TOLERANCE_DAYS * 24 * 60 * 60 * 1000;
-    const closingWithTolerance = new Date(closingDate.getTime() - toleranceMs);
     const dueWithTolerance = new Date(dueDate.getTime() + toleranceMs);
 
-    // Buscar pagos programados para esta tarjeta en el período (con tolerancia ±5 días)
+    // Calcular el límite inferior para búsqueda de instancias
+    // Cuando closingDay = dueDay, el día del corte es también el vencimiento del período anterior
+    // Por eso usamos el día DESPUÉS del corte como límite inferior
+    const searchStartDate = new Date(closingDate);
+    searchStartDate.setDate(searchStartDate.getDate() + 1);
+
+    // Buscar pagos programados para esta tarjeta en el período
+    // Rango: desde día después del corte hasta dueDate + tolerancia
     const cardInstances = instances.filter(
       (instance) =>
         instance.cardId === card.id &&
         instance.paymentType === 'card_payment' &&
-        instance.dueDate >= closingWithTolerance &&
+        instance.dueDate >= searchStartDate &&
         instance.dueDate <= dueWithTolerance
     );
 
@@ -392,7 +398,7 @@ export function analyzeCardPeriods(
         s.paymentType === 'card_payment' &&
         s.isActive === true &&
         s.paymentDate &&
-        s.paymentDate >= closingWithTolerance &&
+        s.paymentDate >= searchStartDate &&
         s.paymentDate <= dueWithTolerance
     );
 
