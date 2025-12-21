@@ -53,6 +53,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
+import { Switch } from '@/components/ui/switch';
 import { Pagination } from '@/components/ui/pagination';
 import { CardGridItem } from '@/components/cards/CardGridItem';
 import { CardListItem } from '@/components/cards/CardListItem';
@@ -98,7 +99,11 @@ export function Cards() {
 
   // Estados para búsqueda y ordenamiento
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortBy, setSortBy] = useState<'name' | 'balance' | 'bank' | 'credit'>('name');
+  const [sortBy, setSortBy] = useState<'name' | 'balance' | 'bank' | 'credit'>('credit');
+  const [hideDepartmental, setHideDepartmental] = useState(() => {
+    const saved = localStorage.getItem('cards-hide-departmental');
+    return saved === 'true';
+  });
 
   // Estados para vista y paginación
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -667,6 +672,11 @@ export function Cards() {
   const filteredAndSortedCards = useMemo(() => {
     let result = [...cards];
 
+    // Filtrar tarjetas departamentales si está activado el toggle
+    if (hideDepartmental) {
+      result = result.filter((card) => card.cardType !== 'Departamental');
+    }
+
     // Filtrar por búsqueda
     if (searchTerm.trim()) {
       const search = searchTerm.toLowerCase();
@@ -698,7 +708,7 @@ export function Cards() {
     });
 
     return result;
-  }, [cards, searchTerm, sortBy, banks]);
+  }, [cards, searchTerm, sortBy, banks, hideDepartmental]);
 
   // Paginación
   const totalPages = Math.ceil(filteredAndSortedCards.length / itemsPerPage);
@@ -731,6 +741,12 @@ export function Cards() {
     setItemsPerPage(items);
     setCurrentPage(1);
     localStorage.setItem('cards-items-per-page', items.toString());
+  };
+
+  const handleHideDepartmentalChange = (checked: boolean) => {
+    setHideDepartmental(checked);
+    setCurrentPage(1);
+    localStorage.setItem('cards-hide-departmental', checked.toString());
   };
 
   if (loading) {
@@ -1288,6 +1304,16 @@ export function Cards() {
                 </Select>
               </div>
               <ViewToggle value={viewMode} onChange={handleViewModeChange} />
+            </div>
+            <div className="flex items-center justify-between sm:justify-start gap-2 pt-2 sm:pt-0 border-t sm:border-t-0">
+              <Label htmlFor="hide-departmental" className="text-sm text-muted-foreground cursor-pointer whitespace-nowrap">
+                Ocultar departamentales
+              </Label>
+              <Switch
+                id="hide-departmental"
+                checked={hideDepartmental}
+                onCheckedChange={handleHideDepartmentalChange}
+              />
             </div>
             {searchTerm && (
               <p className="text-sm text-muted-foreground mt-3">
