@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import type { Service, ServiceFormData, PaymentMethod, ServiceType, PaymentInstance } from '@/lib/types';
-import { Store, Plus, X, Search, Loader2, CreditCard, Banknote, Edit, Calendar, CalendarCheck } from 'lucide-react';
+import { Store, Plus, X, Search, Loader2, CreditCard, Banknote, Edit, Calendar, CalendarCheck, Cable } from 'lucide-react';
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { ServiceGridItem } from '@/components/services/ServiceGridItem';
 import { ServiceListItem } from '@/components/services/ServiceListItem';
@@ -380,28 +380,64 @@ export function Services() {
                 </p>
               </div>
 
-              {/* Líneas de servicio para billing_cycle */}
+              {/* Ciclo de facturación para billing_cycle */}
               {formData.serviceType === 'billing_cycle' && (
                 <div className="space-y-4 p-4 bg-muted/50 rounded-lg border border-muted">
                   <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                     <Calendar className="h-4 w-4" />
-                    <span>Líneas / Contratos</span>
+                    <span>Ciclo de Facturación</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Configura las fechas de corte y vencimiento del servicio
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="billingCycleDay">Día de corte</Label>
+                      <Input
+                        id="billingCycleDay"
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={formData.billingCycleDay || ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          billingCycleDay: e.target.value ? parseInt(e.target.value) : undefined,
+                        })}
+                        placeholder="1-31"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="billingDueDay">Día de vencimiento</Label>
+                      <Input
+                        id="billingDueDay"
+                        type="number"
+                        min={1}
+                        max={31}
+                        value={formData.billingDueDay || ''}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          billingDueDay: e.target.value ? parseInt(e.target.value) : undefined,
+                        })}
+                        placeholder="1-31"
+                      />
+                    </div>
                   </div>
 
-                  {editingService ? (
-                    <ServiceLineList
-                      service={editingService}
-                      onLinesChange={refetchServiceLines}
-                    />
-                  ) : (
-                    <div className="text-center py-6 bg-background rounded-lg border border-dashed">
-                      <Calendar className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-                      <p className="text-sm text-muted-foreground">
-                        Guarda el servicio primero
+                  {/* Líneas opcionales - solo para servicios multi-contrato */}
+                  {editingService && (
+                    <div className="pt-4 border-t">
+                      <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-2">
+                        <Cable className="h-4 w-4" />
+                        <span>Líneas adicionales (opcional)</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Solo si tienes múltiples contratos con diferentes ciclos (ej: telefonía)
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Después podrás agregar líneas con diferentes ciclos de facturación
-                      </p>
+                      <ServiceLineList
+                        service={editingService}
+                        onLinesChange={refetchServiceLines}
+                      />
                     </div>
                   )}
                 </div>
@@ -564,21 +600,12 @@ export function Services() {
                   </div>
                 </div>
 
-                {/* Líneas de servicio (solo para billing_cycle) */}
-                {viewingService.serviceType === 'billing_cycle' && (
-                  <ServiceLineList
-                    service={viewingService}
-                    onLinesChange={refetchServiceLines}
-                  />
-                )}
-
-                {/* Ciclo de facturación legacy (solo si tiene valores pero no tiene líneas) */}
+                {/* Ciclo de facturación (solo para billing_cycle) */}
                 {viewingService.serviceType === 'billing_cycle' &&
                  viewingService.billingCycleDay &&
-                 viewingService.billingDueDay &&
-                 !linesCountByService[viewingService.id] && (
+                 viewingService.billingDueDay && (
                   <div className="space-y-3">
-                    <h4 className="text-sm font-medium text-muted-foreground">Ciclo de Facturación (legacy)</h4>
+                    <h4 className="text-sm font-medium text-muted-foreground">Ciclo de Facturación</h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="p-4 bg-orange-50 dark:bg-orange-950/30 rounded-lg text-center">
                         <p className="text-xs text-muted-foreground mb-1">Día de corte</p>
@@ -589,9 +616,18 @@ export function Services() {
                         <p className="text-2xl font-bold text-red-600">{viewingService.billingDueDay}</p>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground text-center">
-                      Configura líneas individuales para gestionar múltiples contratos
-                    </p>
+                  </div>
+                )}
+
+                {/* Líneas adicionales (solo para billing_cycle con líneas) */}
+                {viewingService.serviceType === 'billing_cycle' &&
+                 linesCountByService[viewingService.id] > 0 && (
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-medium text-muted-foreground">Líneas / Contratos</h4>
+                    <ServiceLineList
+                      service={viewingService}
+                      onLinesChange={refetchServiceLines}
+                    />
                   </div>
                 )}
 

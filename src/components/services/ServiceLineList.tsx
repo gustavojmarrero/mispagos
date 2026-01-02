@@ -186,23 +186,19 @@ export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps
       </div>
 
       {serviceLines.length === 0 ? (
-        <div className="text-center py-8 bg-muted/30 rounded-lg border border-dashed">
-          <Calendar className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">
-            No hay líneas configuradas
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Agrega líneas para configurar diferentes ciclos de facturación
+        <div className="text-center py-4 bg-muted/30 rounded-lg border border-dashed">
+          <p className="text-xs text-muted-foreground">
+            No hay líneas adicionales configuradas
           </p>
           <Button
             type="button"
             size="sm"
-            variant="outline"
-            className="mt-3"
+            variant="ghost"
+            className="mt-2 text-xs"
             onClick={() => setShowForm(true)}
           >
-            <Plus className="h-4 w-4 mr-1" />
-            Crear primera línea
+            <Plus className="h-3 w-3 mr-1" />
+            Agregar línea
           </Button>
         </div>
       ) : (
