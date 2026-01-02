@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,6 +14,7 @@ import {
   generateSmartAlerts,
   getNext7DaysTimeline,
 } from '@/lib/dashboardMetrics';
+import { ensureMonthlyInstances } from '@/lib/paymentInstances';
 import { WeeklyCashFlowCard } from '@/components/WeeklyCashFlowCard';
 import { SmartAlertsList } from '@/components/SmartAlertsList';
 import { WeeklyTimeline } from '@/components/WeeklyTimeline';
@@ -30,6 +31,7 @@ export function Dashboard() {
   const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
   const [loading, setLoading] = useState(true);
+  const instancesGeneratedRef = useRef(false);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -90,6 +92,31 @@ export function Dashboard() {
 
     fetchData();
   }, [currentUser]);
+
+  // Trigger: generar instancias faltantes del mes actual y siguiente
+  useEffect(() => {
+    if (!currentUser || loading || instancesGeneratedRef.current) return;
+    if (scheduledPayments.length === 0) return;
+
+    const generateMissingInstances = async () => {
+      try {
+        console.log('[Dashboard] Verificando instancias de pagos...');
+        await ensureMonthlyInstances(
+          currentUser.householdId,
+          scheduledPayments,
+          services,
+          serviceLines
+        );
+        instancesGeneratedRef.current = true;
+        console.log('[Dashboard] Verificación de instancias completada');
+      } catch (error: unknown) {
+        const firebaseError = error as { message?: string; code?: string };
+        console.error('[Dashboard] Error generando instancias:', firebaseError.code, firebaseError.message);
+      }
+    };
+
+    generateMissingInstances();
+  }, [currentUser, loading, scheduledPayments, services, serviceLines]);
 
   // Rango de fechas fijo: mes actual
   const dateRange = useMemo(() => {

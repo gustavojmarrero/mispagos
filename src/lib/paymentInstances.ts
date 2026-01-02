@@ -127,9 +127,11 @@ function getNextWeekday(fromDate: Date, targetDay: DayOfWeek): Date {
  */
 function getNextMonthDay(fromDate: Date, targetDay: number): Date {
   const result = new Date(fromDate);
+  result.setHours(0, 0, 0, 0); // Normalizar la hora
   const currentDay = result.getDate();
 
   // Si ya pasó el día este mes, ir al próximo mes
+  // Nota: usamos > (no >=) para incluir el día actual como válido
   if (currentDay > targetDay) {
     result.setMonth(result.getMonth() + 1);
   }
@@ -281,7 +283,11 @@ export function generateBillingCycleInstances(
 ): Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] {
   const instances: Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] = [];
 
-  // Si tiene paymentDate específico (seleccionado en formulario), usar esa fecha
+  // IMPORTANTE: Los pagos billing_cycle NO generan instancias automáticamente.
+  // Solo se generan instancias cuando el usuario programa explícitamente el pago
+  // usando paymentDate (después de que el corte ya pasó y conoce el monto).
+
+  // Si tiene paymentDate específico, generar instancia con esa fecha
   if (scheduledPayment.paymentDate) {
     const dueDate = scheduledPayment.paymentDate;
     if (dueDate >= startDate && dueDate <= endDate) {
@@ -303,54 +309,9 @@ export function generateBillingCycleInstances(
         updatedByName: scheduledPayment.updatedByName,
       });
     }
-    return instances;
   }
-
-  // Si no tiene paymentDate, calcular automáticamente basado en billingCycleDay/billingDueDay
-  const config = getBillingCycleConfig(service, serviceLine);
-
-  if (service.serviceType !== 'billing_cycle' || !config) {
-    return instances;
-  }
-
-  // Generar instancias mensuales basadas en el día de vencimiento
-  let currentDate = new Date(startDate);
-
-  while (currentDate <= endDate) {
-    const dueDate = getBillingCycleDueDate(service, currentDate, serviceLine);
-
-    if (!dueDate || dueDate > endDate) {
-      // Avanzar al siguiente mes
-      currentDate.setMonth(currentDate.getMonth() + 1);
-      currentDate.setDate(1);
-      continue;
-    }
-
-    if (dueDate >= startDate) {
-      instances.push({
-        userId: scheduledPayment.userId,
-        householdId: scheduledPayment.householdId,
-        scheduledPaymentId: scheduledPayment.id,
-        paymentType: scheduledPayment.paymentType,
-        dueDate,
-        amount: 0, // Monto $0 hasta que se conozca (después del corte)
-        description: scheduledPayment.description,
-        status: 'pending',
-        cardId: scheduledPayment.cardId,
-        serviceId: scheduledPayment.serviceId,
-        serviceLineId: scheduledPayment.serviceLineId,
-        createdBy: scheduledPayment.createdBy,
-        createdByName: scheduledPayment.createdByName,
-        updatedBy: scheduledPayment.updatedBy,
-        updatedByName: scheduledPayment.updatedByName,
-      });
-    }
-
-    // Avanzar al siguiente mes para evitar duplicados
-    currentDate = new Date(dueDate);
-    currentDate.setMonth(currentDate.getMonth() + 1);
-    currentDate.setDate(1);
-  }
+  // Si no tiene paymentDate, NO generar instancias automáticamente para billing_cycle.
+  // El dashboard mostrará una alerta solicitando que se programe después del corte.
 
   return instances;
 }
@@ -508,10 +469,12 @@ export function generateInstancesForDateRange(
  * Genera instancias para el mes actual y el próximo mes
  * @param scheduledPayment El pago programado
  * @param service El servicio asociado (requerido para billing_cycle)
+ * @param serviceLine La línea de servicio asociada (opcional, para billing_cycle con múltiples líneas)
  */
 export async function generateCurrentAndNextMonthInstances(
   scheduledPayment: ScheduledPayment,
-  service?: Service
+  service?: Service,
+  serviceLine?: ServiceLine
 ): Promise<void> {
   if (!scheduledPayment.isActive) return;
 
@@ -521,19 +484,27 @@ export async function generateCurrentAndNextMonthInstances(
   let allInstances: Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] = [];
 
   // Para servicios con billing_cycle, usar la lógica específica
-  if (scheduledPayment.frequency === 'billing_cycle' && service?.serviceType === 'billing_cycle') {
+  // También considerar si tiene serviceLineId con ciclo de facturación
+  const hasBillingCycleConfig = (
+    (scheduledPayment.frequency === 'billing_cycle' && service?.serviceType === 'billing_cycle') ||
+    (scheduledPayment.frequency === 'billing_cycle' && serviceLine?.billingCycleDay !== undefined && serviceLine?.billingDueDay !== undefined)
+  );
+
+  if (hasBillingCycleConfig) {
     const currentMonthInstances = generateBillingCycleInstances(
       scheduledPayment,
       service,
       currentMonth.start,
-      currentMonth.end
+      currentMonth.end,
+      serviceLine
     );
 
     const nextMonthInstances = generateBillingCycleInstances(
       scheduledPayment,
       service,
       nextMonth.start,
-      nextMonth.end
+      nextMonth.end,
+      serviceLine
     );
 
     allInstances = [...currentMonthInstances, ...nextMonthInstances];
@@ -631,19 +602,37 @@ async function getExistingInstances(
  * @param householdId ID del hogar
  * @param scheduledPayments Lista de pagos programados
  * @param services Lista de servicios (necesario para billing_cycle)
+ * @param serviceLines Lista de líneas de servicio (necesario para billing_cycle con múltiples líneas)
  */
 export async function ensureMonthlyInstances(
   householdId: string,
   scheduledPayments: ScheduledPayment[],
-  services?: Service[]
+  services?: Service[],
+  serviceLines?: ServiceLine[]
 ): Promise<void> {
+  const currentMonth = getCurrentMonthRange();
   const nextMonth = getNextMonthRange();
 
   for (const scheduledPayment of scheduledPayments) {
     if (!scheduledPayment.isActive) continue;
 
+    // IMPORTANTE: Los pagos billing_cycle NO generan instancias automáticamente.
+    // Solo se procesan si tienen un paymentDate específico (programados manualmente).
+    if (scheduledPayment.frequency === 'billing_cycle' && !scheduledPayment.paymentDate) {
+      continue;
+    }
+
+    // Verificar si ya existen instancias para el mes actual
+    const currentMonthQuery = query(
+      collection(db, 'payment_instances'),
+      where('householdId', '==', householdId),
+      where('scheduledPaymentId', '==', scheduledPayment.id),
+      where('dueDate', '>=', Timestamp.fromDate(currentMonth.start)),
+      where('dueDate', '<=', Timestamp.fromDate(currentMonth.end))
+    );
+
     // Verificar si ya existen instancias para el próximo mes
-    const q = query(
+    const nextMonthQuery = query(
       collection(db, 'payment_instances'),
       where('householdId', '==', householdId),
       where('scheduledPaymentId', '==', scheduledPayment.id),
@@ -651,16 +640,25 @@ export async function ensureMonthlyInstances(
       where('dueDate', '<=', Timestamp.fromDate(nextMonth.end))
     );
 
-    const snapshot = await getDocs(q);
+    const [currentSnapshot, nextSnapshot] = await Promise.all([
+      getDocs(currentMonthQuery),
+      getDocs(nextMonthQuery)
+    ]);
 
-    // Si no existen, generar
-    if (snapshot.empty) {
+    // Si faltan instancias en cualquiera de los dos meses, regenerar
+    if (currentSnapshot.empty || nextSnapshot.empty) {
       // Buscar el servicio asociado si es billing_cycle
       const service = scheduledPayment.frequency === 'billing_cycle' && scheduledPayment.serviceId
         ? services?.find(s => s.id === scheduledPayment.serviceId)
         : undefined;
 
-      await generateCurrentAndNextMonthInstances(scheduledPayment, service);
+      // Buscar la línea de servicio asociada si existe
+      const serviceLine = scheduledPayment.serviceLineId
+        ? serviceLines?.find(sl => sl.id === scheduledPayment.serviceLineId)
+        : undefined;
+
+      console.log(`[ensureMonthlyInstances] Generando instancias para "${scheduledPayment.description}" - Mes actual: ${currentSnapshot.empty ? 'falta' : 'ok'}, Próximo mes: ${nextSnapshot.empty ? 'falta' : 'ok'}${serviceLine ? ` (línea: ${serviceLine.identifier})` : ''}`);
+      await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine);
     }
   }
 }

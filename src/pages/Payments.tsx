@@ -535,6 +535,11 @@ export function Payments() {
           ? services.find(s => s.id === savedPayment.serviceId)
           : undefined;
 
+        // Buscar la línea de servicio asociada si existe
+        const selectedLine = savedPayment.serviceLineId
+          ? selectedServiceLines.find(sl => sl.id === savedPayment.serviceLineId)
+          : undefined;
+
         // Si es una edición, actualizar las instancias existentes primero
         if (editingPayment) {
           console.log('[Payments] Actualizando instancias existentes...');
@@ -548,7 +553,7 @@ export function Payments() {
         }
 
         // Luego generar nuevas instancias si faltan
-        await generateCurrentAndNextMonthInstances(savedPayment, selectedService);
+        await generateCurrentAndNextMonthInstances(savedPayment, selectedService, selectedLine);
         console.log('[Payments] Instancias generadas exitosamente');
       } catch (instanceError) {
         console.error('[Payments] Error generando instancias:', instanceError);
