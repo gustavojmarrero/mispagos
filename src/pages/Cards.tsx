@@ -1305,7 +1305,7 @@ export function Cards() {
               </div>
               <ViewToggle value={viewMode} onChange={handleViewModeChange} />
             </div>
-            <div className="flex items-center justify-between sm:justify-start gap-2 pt-2 sm:pt-0 border-t sm:border-t-0">
+            <div className="flex items-center justify-between sm:justify-start gap-2 pt-4 sm:pt-0 sm:mt-3 border-t sm:border-t-0">
               <Label htmlFor="hide-departmental" className="text-sm text-muted-foreground cursor-pointer whitespace-nowrap">
                 Ocultar departamentales
               </Label>
