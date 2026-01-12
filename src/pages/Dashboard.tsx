@@ -172,9 +172,11 @@ export function Dashboard() {
     [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow, banks, serviceBillingAnalysis, serviceLineBillingAnalysis]
   );
 
+  // Timeline usa todas las instancias sin filtrar por mes,
+  // ya que getNext7DaysTimeline filtra por los próximos 7 días
   const timeline = useMemo(
-    () => getNext7DaysTimeline(filteredPaymentInstances),
-    [filteredPaymentInstances]
+    () => getNext7DaysTimeline(paymentInstances),
+    [paymentInstances]
   );
 
   if (loading) {
