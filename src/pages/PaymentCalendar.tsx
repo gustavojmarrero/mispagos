@@ -680,15 +680,58 @@ export function PaymentCalendar() {
     }
 
     try {
-      await updateDoc(doc(db, 'payment_instances', editingInstance.id), {
+      // Calcular suma de pagos parciales existentes
+      const partialPaymentsSum = editingInstance.partialPayments?.reduce(
+        (sum, payment) => sum + payment.amount,
+        0
+      ) || 0;
+
+      // Calcular nuevo remainingAmount considerando los anticipos
+      const newRemainingAmount = newAmount - partialPaymentsSum;
+
+      // Determinar el nuevo estado
+      let newStatus: 'pending' | 'partial' | 'paid' = editingInstance.status as 'pending' | 'partial' | 'paid';
+      let newPaidAmount: number | undefined = editingInstance.paidAmount;
+
+      if (newRemainingAmount <= 0) {
+        // Los anticipos ya cubren o exceden el nuevo monto
+        newStatus = 'paid';
+        newPaidAmount = newAmount;
+      } else if (partialPaymentsSum > 0) {
+        // Hay anticipos pero aún queda saldo pendiente
+        newStatus = 'partial';
+        newPaidAmount = partialPaymentsSum;
+      } else {
+        // No hay anticipos, mantener como pendiente
+        newStatus = 'pending';
+        newPaidAmount = undefined;
+      }
+
+      const updateData: any = {
         amount: newAmount,
+        remainingAmount: Math.max(0, newRemainingAmount),
+        status: newStatus,
         notes: adjustNotes || null,
         updatedAt: serverTimestamp(),
         updatedBy: currentUser.id,
         updatedByName: currentUser.name,
-      });
+      };
 
-      toast.success('Monto ajustado correctamente');
+      // Solo actualizar paidAmount y paidDate si cambió el estado
+      if (newStatus === 'paid') {
+        updateData.paidAmount = newPaidAmount;
+        updateData.paidDate = serverTimestamp();
+      } else if (newStatus === 'partial') {
+        updateData.paidAmount = newPaidAmount;
+      }
+
+      await updateDoc(doc(db, 'payment_instances', editingInstance.id), updateData);
+
+      if (newStatus === 'paid' && editingInstance.status !== 'paid') {
+        toast.success('Los anticipos cubrieron el monto ajustado. Pago marcado como completado.');
+      } else {
+        toast.success('Monto ajustado correctamente');
+      }
       setShowAdjustModal(false);
       setEditingInstance(null);
       await fetchInstances();
