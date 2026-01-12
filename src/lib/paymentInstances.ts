@@ -276,10 +276,10 @@ export function getBillingCycleCutoffDate(
  */
 export function generateBillingCycleInstances(
   scheduledPayment: ScheduledPayment,
-  service: Service,
+  _service: Service | undefined,
   startDate: Date,
   endDate: Date,
-  serviceLine?: ServiceLine
+  _serviceLine?: ServiceLine
 ): Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] {
   const instances: Omit<PaymentInstance, 'id' | 'createdAt' | 'updatedAt'>[] = [];
 
@@ -657,7 +657,7 @@ export async function ensureMonthlyInstances(
         ? serviceLines?.find(sl => sl.id === scheduledPayment.serviceLineId)
         : undefined;
 
-      console.log(`[ensureMonthlyInstances] Generando instancias para "${scheduledPayment.description}" - Mes actual: ${currentSnapshot.empty ? 'falta' : 'ok'}, Próximo mes: ${nextSnapshot.empty ? 'falta' : 'ok'}${serviceLine ? ` (línea: ${serviceLine.identifier})` : ''}`);
+      console.log(`[ensureMonthlyInstances] Generando instancias para "${scheduledPayment.description}" - Mes actual: ${currentSnapshot.empty ? 'falta' : 'ok'}, Próximo mes: ${nextSnapshot.empty ? 'falta' : 'ok'}${serviceLine ? ` (línea: ${serviceLine.name})` : ''}`);
       await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine);
     }
   }
