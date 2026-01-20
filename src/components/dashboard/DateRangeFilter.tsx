@@ -5,14 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Calendar, X } from 'lucide-react';
+import type { DateRangePreset, DateRange } from '@/lib/types';
 
-export type DateRangePreset = 'this-week' | 'current-month' | 'last-month' | 'last-3-months' | 'last-6-months' | 'custom' | 'all';
-
-export interface DateRange {
-  from: Date | null;
-  to: Date | null;
-  preset: DateRangePreset;
-}
+// Re-export types for backwards compatibility
+export type { DateRangePreset, DateRange };
 
 interface DateRangeFilterProps {
   value: DateRange;

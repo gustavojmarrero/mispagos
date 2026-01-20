@@ -1,4 +1,4 @@
-import type { DateRangePreset } from '@/components/dashboard/DateRangeFilter';
+import type { DateRangePreset } from '@/lib/types';
 
 export interface PeriodContext {
   // Labels para las tarjetas

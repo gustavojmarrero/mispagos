@@ -28,7 +28,12 @@ export function SmartAlertsList({ alerts }: SmartAlertsListProps) {
     const route = alert.action.route;
     const params = alert.action.params;
     if (params) {
-      const queryString = new URLSearchParams(params).toString();
+      // Convertir valores a string para URLSearchParams
+      const stringParams: Record<string, string> = {};
+      for (const [key, value] of Object.entries(params)) {
+        stringParams[key] = String(value);
+      }
+      const queryString = new URLSearchParams(stringParams).toString();
       navigate(`${route}?${queryString}`);
     } else {
       navigate(route);

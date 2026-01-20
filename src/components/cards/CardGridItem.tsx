@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { formatCurrency, getCardIcon } from '@/lib/utils';
 import type { Card as CardType } from '@/lib/types';
 import { Edit, Trash2, Building2 } from 'lucide-react';
+import { getUsageColor, getUsageBadge, calculateUsagePercent } from '@/lib/cardUtils';
 
 interface CardGridItemProps {
   card: CardType;
@@ -14,23 +15,8 @@ interface CardGridItemProps {
 }
 
 export function CardGridItem({ card, bankName, onView, onEdit, onDelete }: CardGridItemProps) {
-  const usagePercent = card.creditLimit > 0
-    ? (card.currentBalance / card.creditLimit) * 100
-    : 0;
-
-  const getUsageColor = (percent: number) => {
-    if (percent < 50) return 'bg-green-500';
-    if (percent < 80) return 'bg-yellow-500';
-    return 'bg-red-500';
-  };
-
-  const getUsageBadge = (percent: number) => {
-    if (percent < 50) return { text: 'OK', color: 'bg-green-100 text-green-700' };
-    if (percent < 80) return { text: 'Med', color: 'bg-yellow-100 text-yellow-700' };
-    return { text: 'Alto', color: 'bg-red-100 text-red-700' };
-  };
-
-  const badge = getUsageBadge(usagePercent);
+  const usagePercent = calculateUsagePercent(card.currentBalance, card.creditLimit);
+  const badge = getUsageBadge(usagePercent, true);
 
   return (
     <Card

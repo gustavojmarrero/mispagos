@@ -1,3 +1,29 @@
+// Date Range Types (para filtros de fecha)
+export type DateRangePreset = 'this-week' | 'current-month' | 'last-month' | 'last-3-months' | 'last-6-months' | 'custom' | 'all';
+
+export interface DateRange {
+  from: Date | null;
+  to: Date | null;
+  preset: DateRangePreset;
+}
+
+/**
+ * Campos comunes de metadata y auditoría para entidades Firestore.
+ * Patrón: Las interfaces *FormData contienen solo campos editables,
+ * mientras que las entidades completas agregan estos campos de metadata.
+ */
+export interface EntityMetadata {
+  id: string;
+  userId: string; // Deprecated: mantener por compatibilidad
+  householdId: string;
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;
+  createdByName: string;
+  updatedBy: string;
+  updatedByName: string;
+}
+
 // User Types
 export interface User {
   id: string;

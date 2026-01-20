@@ -1,4 +1,5 @@
 import type { PaymentInstance, ScheduledPayment, Card as CardType, Service } from './types';
+import { toDate } from './dateUtils';
 
 // ============================================
 // 1. CUMPLIMIENTO DE PAGOS
@@ -18,13 +19,6 @@ export function calculatePaymentCompliance(
   endDate: Date
 ): PaymentCompliance {
   const now = new Date();
-
-  // Helper para convertir cualquier fecha a Date
-  const toDate = (date: any): Date => {
-    if (date instanceof Date) return date;
-    if (date?.toDate) return date.toDate(); // Firestore Timestamp
-    return new Date(date);
-  };
 
   const periodInstances = instances.filter(instance => {
     const dueDate = toDate(instance.dueDate);
