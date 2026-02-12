@@ -7,12 +7,20 @@ admin.initializeApp();
 const db = admin.firestore();
 
 // Tipos
+interface PhysicalCard {
+  id: string;
+  number: string;
+  digitalNumber?: string;
+  label: string;
+}
+
 interface Card {
   id: string;
   name: string;
   cardType: string;
   physicalCardNumber?: string;
   digitalCardNumber?: string;
+  physicalCards?: PhysicalCard[];
   availableCredit: number;
   creditLimit: number;
   bankId: string;
@@ -25,6 +33,12 @@ interface Bank {
   name: string;
 }
 
+interface PhysicalCardResponse {
+  label: string;
+  lastDigitsPhysical: string | null;
+  lastDigitsDigital: string | null;
+}
+
 interface CardResponse {
   id: string;
   name: string;
@@ -32,6 +46,7 @@ interface CardResponse {
   owner: string;
   lastDigitsPhysical: string | null;
   lastDigitsDigital: string | null;
+  physicalCards: PhysicalCardResponse[];
   availableCredit: number;
   creditLimit: number;
   cardType: string;
@@ -116,13 +131,32 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
     // Mapear tarjetas a response
     const cards: CardResponse[] = cardsSnapshot.docs.map(doc => {
       const card = { id: doc.id, ...doc.data() } as Card;
+
+      // Construir array de tarjetas físicas
+      let physicalCards: PhysicalCardResponse[];
+      if (card.physicalCards && card.physicalCards.length > 0) {
+        physicalCards = card.physicalCards.map(pc => ({
+          label: pc.label,
+          lastDigitsPhysical: getLast4Digits(pc.number),
+          lastDigitsDigital: getLast4Digits(pc.digitalNumber),
+        }));
+      } else {
+        // Fallback a campos legacy
+        physicalCards = [{
+          label: card.owner,
+          lastDigitsPhysical: getLast4Digits(card.physicalCardNumber),
+          lastDigitsDigital: getLast4Digits(card.digitalCardNumber),
+        }];
+      }
+
       return {
         id: card.id,
         name: card.name,
         bankName: banksMap.get(card.bankId) || 'Desconocido',
         owner: card.owner,
-        lastDigitsPhysical: getLast4Digits(card.physicalCardNumber),
-        lastDigitsDigital: getLast4Digits(card.digitalCardNumber),
+        lastDigitsPhysical: physicalCards[0].lastDigitsPhysical,
+        lastDigitsDigital: physicalCards[0].lastDigitsDigital,
+        physicalCards,
         availableCredit: card.availableCredit,
         creditLimit: card.creditLimit,
         cardType: card.cardType,
