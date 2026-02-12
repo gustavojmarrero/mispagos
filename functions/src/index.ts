@@ -138,7 +138,7 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
         physicalCards = card.physicalCards.map(pc => ({
           label: pc.label,
           lastDigitsPhysical: getLast4Digits(pc.number),
-          lastDigitsDigital: getLast4Digits(pc.digitalNumber),
+          lastDigitsDigital: getLast4Digits(pc.digitalNumber) || getLast4Digits(card.digitalCardNumber),
         }));
       } else {
         // Fallback a campos legacy
