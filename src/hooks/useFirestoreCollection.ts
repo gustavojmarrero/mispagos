@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { collection, query, where, getDocs, QueryConstraint } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,14 +19,16 @@ interface UseFirestoreCollectionResult<T> {
 }
 
 /**
- * Hook genérico para obtener colecciones de Firestore filtradas por householdId
+ * Hook genérico para obtener colecciones de Firestore filtradas por householdId.
+ * Usa refs para additionalConstraints y transform para evitar bucles infinitos
+ * de re-fetch causados por referencias inestables en cada render.
  */
 export function useFirestoreCollection<T extends { id: string }>(
   options: UseFirestoreCollectionOptions<T>
 ): UseFirestoreCollectionResult<T> {
   const {
     collectionName,
-    additionalConstraints = [],
+    additionalConstraints,
     transform,
     enabled = true,
     errorMessage = `Error al cargar ${collectionName}`
@@ -36,6 +38,13 @@ export function useFirestoreCollection<T extends { id: string }>(
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Refs para valores con referencias inestables (arrays/funciones nuevas cada render).
+  // Se leen dentro de fetchData sin ser dependencias de useCallback.
+  const additionalConstraintsRef = useRef(additionalConstraints);
+  additionalConstraintsRef.current = additionalConstraints;
+  const transformRef = useRef(transform);
+  transformRef.current = transform;
 
   const fetchData = useCallback(async () => {
     if (!currentUser || !enabled) {
@@ -47,7 +56,7 @@ export function useFirestoreCollection<T extends { id: string }>(
       setLoading(true);
       const constraints: QueryConstraint[] = [
         where('householdId', '==', currentUser.householdId),
-        ...additionalConstraints
+        ...(additionalConstraintsRef.current || [])
       ];
 
       const dataQuery = query(collection(db, collectionName), ...constraints);
@@ -63,8 +72,8 @@ export function useFirestoreCollection<T extends { id: string }>(
         } as unknown as T;
       });
 
-      if (transform) {
-        result = transform(result);
+      if (transformRef.current) {
+        result = transformRef.current(result);
       }
 
       setData(result);
@@ -75,7 +84,7 @@ export function useFirestoreCollection<T extends { id: string }>(
     } finally {
       setLoading(false);
     }
-  }, [currentUser, collectionName, additionalConstraints, transform, enabled, errorMessage]);
+  }, [currentUser, collectionName, enabled, errorMessage]);
 
   useEffect(() => {
     fetchData();
