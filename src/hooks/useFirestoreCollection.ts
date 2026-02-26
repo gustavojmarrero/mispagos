@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { collection, query, where, getDocs, QueryConstraint } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,8 +24,13 @@ interface UseFirestoreCollectionResult<T> {
 
 /**
  * Hook genérico para obtener colecciones de Firestore filtradas por householdId.
- * Usa refs para additionalConstraints y transform para evitar bucles infinitos
- * de re-fetch causados por referencias inestables en cada render.
+ *
+ * Separa fetch (costoso, va a Firestore) de transform (barato, en memoria):
+ * - additionalConstraints se lee via ref para no disparar re-fetch por refs inestables.
+ *   Para filtros dinámicos de query, pasar constraintsKey.
+ * - transform se aplica como valor derivado (useMemo) sobre los datos cacheados.
+ *   Callers que memorizan su transform (useMemo/useCallback) obtienen re-aplicación
+ *   automática cuando sus dependencias cambian, sin re-fetch.
  */
 export function useFirestoreCollection<T extends { id: string }>(
   options: UseFirestoreCollectionOptions<T>
@@ -40,16 +45,13 @@ export function useFirestoreCollection<T extends { id: string }>(
   } = options;
 
   const { currentUser } = useAuth();
-  const [data, setData] = useState<T[]>([]);
+  const [rawData, setRawData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Refs para valores con referencias inestables (arrays/funciones nuevas cada render).
-  // Se leen dentro de fetchData sin ser dependencias de useCallback.
+  // Ref para constraints con referencias inestables (array nuevo cada render).
   const additionalConstraintsRef = useRef(additionalConstraints);
   additionalConstraintsRef.current = additionalConstraints;
-  const transformRef = useRef(transform);
-  transformRef.current = transform;
 
   const fetchData = useCallback(async () => {
     if (!currentUser || !enabled) {
@@ -67,7 +69,7 @@ export function useFirestoreCollection<T extends { id: string }>(
       const dataQuery = query(collection(db, collectionName), ...constraints);
       const snapshot = await getDocs(dataQuery);
 
-      let result = snapshot.docs.map((doc) => {
+      const result = snapshot.docs.map((doc) => {
         const data = doc.data();
         return {
           ...data,
@@ -77,11 +79,7 @@ export function useFirestoreCollection<T extends { id: string }>(
         } as unknown as T;
       });
 
-      if (transformRef.current) {
-        result = transformRef.current(result);
-      }
-
-      setData(result);
+      setRawData(result);
       setError(null);
     } catch (err) {
       console.error(`Error fetching ${collectionName}:`, err);
@@ -94,6 +92,13 @@ export function useFirestoreCollection<T extends { id: string }>(
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Transform se aplica como valor derivado sobre datos cacheados.
+  // Cuando transform cambia (e.g. useServiceLines cambia serviceId/activeOnly),
+  // se re-computa sin disparar re-fetch a Firestore.
+  const data = useMemo(() => {
+    return transform ? transform(rawData) : rawData;
+  }, [rawData, transform]);
 
   return { data, loading, error, refetch: fetchData };
 }
