@@ -6,6 +6,10 @@ import { useAuth } from '@/contexts/AuthContext';
 interface UseFirestoreCollectionOptions<T> {
   collectionName: string;
   additionalConstraints?: QueryConstraint[];
+  /** Clave estable que representa el estado actual de los constraints.
+   *  Cuando cambia, se re-ejecuta la query. Usar para filtros dinámicos,
+   *  e.g. constraintsKey: `status:${statusFilter}` */
+  constraintsKey?: string;
   transform?: (data: T[]) => T[];
   enabled?: boolean;
   errorMessage?: string;
@@ -29,6 +33,7 @@ export function useFirestoreCollection<T extends { id: string }>(
   const {
     collectionName,
     additionalConstraints,
+    constraintsKey,
     transform,
     enabled = true,
     errorMessage = `Error al cargar ${collectionName}`
@@ -84,7 +89,7 @@ export function useFirestoreCollection<T extends { id: string }>(
     } finally {
       setLoading(false);
     }
-  }, [currentUser, collectionName, enabled, errorMessage]);
+  }, [currentUser, collectionName, enabled, errorMessage, constraintsKey]);
 
   useEffect(() => {
     fetchData();
