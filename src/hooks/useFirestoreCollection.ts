@@ -97,8 +97,14 @@ export function useFirestoreCollection<T extends { id: string }>(
   // Cuando transform cambia (e.g. useServiceLines cambia serviceId/activeOnly),
   // se re-computa sin disparar re-fetch a Firestore.
   const data = useMemo(() => {
-    return transform ? transform([...rawData]) : rawData;
-  }, [rawData, transform]);
+    if (!transform) return rawData;
+    try {
+      return transform([...rawData]);
+    } catch (err) {
+      console.error(`Error in transform for ${collectionName}:`, err);
+      return rawData;
+    }
+  }, [rawData, transform, collectionName]);
 
   return { data, loading, error, refetch: fetchData };
 }
