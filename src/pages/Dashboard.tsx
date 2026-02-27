@@ -104,7 +104,8 @@ export function Dashboard() {
           currentUser.householdId,
           scheduledPayments,
           services,
-          serviceLines
+          serviceLines,
+          paymentInstances
         );
         instancesGeneratedRef.current = true;
       } catch (error: unknown) {
