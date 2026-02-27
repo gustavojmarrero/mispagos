@@ -426,8 +426,7 @@ export function generateInstancesForDateRange(
 export async function generateCurrentAndNextMonthInstances(
   scheduledPayment: ScheduledPayment,
   service?: Service,
-  serviceLine?: ServiceLine,
-  existingInstances?: PaymentInstance[]
+  serviceLine?: ServiceLine
 ): Promise<void> {
   if (!scheduledPayment.isActive) return;
 
@@ -478,15 +477,16 @@ export async function generateCurrentAndNextMonthInstances(
     allInstances = [...currentMonthInstances, ...nextMonthInstances];
   }
 
-  // Verificar cuáles ya existen (usar instancias en memoria si se proporcionan)
-  const resolvedExisting = existingInstances
-    ? existingInstances.filter(i => i.scheduledPaymentId === scheduledPayment.id)
-    : await getExistingInstances(scheduledPayment.householdId, scheduledPayment.id);
+  // Siempre revalidar contra Firestore para evitar duplicados en households compartidos
+  const existingInstances = await getExistingInstances(
+    scheduledPayment.householdId,
+    scheduledPayment.id
+  );
 
   // Filtrar las que no existen
   const instancesToCreate = allInstances.filter(
     (instance) =>
-      !resolvedExisting.some(
+      !existingInstances.some(
         (existing) =>
           existing.dueDate.getTime() === instance.dueDate.getTime() &&
           existing.scheduledPaymentId === instance.scheduledPaymentId
@@ -616,7 +616,7 @@ export async function ensureMonthlyInstances(
         ? serviceLines?.find(sl => sl.id === scheduledPayment.serviceLineId)
         : undefined;
 
-      await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine, existingInstances);
+      await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine);
     }
   }
 }
