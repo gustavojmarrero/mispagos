@@ -258,7 +258,6 @@ export function calculateWeeklyCashFlow(
  * Tolerancia en días para considerar un pago como válido para una tarjeta.
  * Permite pagos programados hasta X días antes/después de la fecha de vencimiento.
  */
-const PAYMENT_TOLERANCE_DAYS = 5;
 
 /**
  * Calcula la fecha de corte para una tarjeta.
@@ -341,9 +340,13 @@ export function analyzeCardPeriods(
       (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    // Calcular fecha límite con tolerancia para matching de pagos
-    const toleranceMs = PAYMENT_TOLERANCE_DAYS * 24 * 60 * 60 * 1000;
-    const dueWithTolerance = new Date(dueDate.getTime() + toleranceMs);
+    // Calcular el límite superior: siguiente fecha de corte
+    // Un pago pertenece a este ciclo si cae entre el corte actual y el siguiente
+    const nextClosingDate = new Date(closingDate);
+    nextClosingDate.setMonth(nextClosingDate.getMonth() + 1);
+    const nextClosingLastDay = new Date(nextClosingDate.getFullYear(), nextClosingDate.getMonth() + 1, 0).getDate();
+    nextClosingDate.setDate(Math.min(card.closingDay, nextClosingLastDay));
+    nextClosingDate.setHours(23, 59, 59, 999);
 
     // Calcular el límite inferior para búsqueda de instancias
     // Cuando closingDay = dueDay, el día del corte es también el vencimiento del período anterior
@@ -352,13 +355,13 @@ export function analyzeCardPeriods(
     searchStartDate.setDate(searchStartDate.getDate() + 1);
 
     // Buscar pagos programados para esta tarjeta en el período
-    // Rango: desde día después del corte hasta dueDate + tolerancia
+    // Rango: desde día después del corte hasta el siguiente corte
     const cardInstances = instances.filter(
       (instance) =>
         instance.cardId === card.id &&
         instance.paymentType === 'card_payment' &&
         instance.dueDate >= searchStartDate &&
-        instance.dueDate <= dueWithTolerance
+        instance.dueDate <= nextClosingDate
     );
 
     const cardScheduled = scheduled.filter(
@@ -368,7 +371,7 @@ export function analyzeCardPeriods(
         s.isActive === true &&
         s.paymentDate &&
         s.paymentDate >= searchStartDate &&
-        s.paymentDate <= dueWithTolerance
+        s.paymentDate <= nextClosingDate
     );
 
     const hasProgrammedPayment =
