@@ -100,7 +100,6 @@ export function Dashboard() {
 
     const generateMissingInstances = async () => {
       try {
-        console.log('[Dashboard] Verificando instancias de pagos...');
         await ensureMonthlyInstances(
           currentUser.householdId,
           scheduledPayments,
@@ -108,7 +107,6 @@ export function Dashboard() {
           serviceLines
         );
         instancesGeneratedRef.current = true;
-        console.log('[Dashboard] Verificación de instancias completada');
       } catch (error: unknown) {
         const firebaseError = error as { message?: string; code?: string };
         console.error('[Dashboard] Error generando instancias:', firebaseError.code, firebaseError.message);

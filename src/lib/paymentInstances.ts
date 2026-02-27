@@ -328,30 +328,9 @@ export function generateInstancesForDateRange(
 
   // Para pagos a tarjetas (fecha específica única)
   if (scheduledPayment.paymentType === 'card_payment' && scheduledPayment.paymentDate) {
-    console.log('[PaymentInstances] 🔍 Procesando pago de tarjeta:', {
-      description: scheduledPayment.description,
-      paymentDate: scheduledPayment.paymentDate,
-      paymentDateType: typeof scheduledPayment.paymentDate,
-      paymentDateConstructor: scheduledPayment.paymentDate?.constructor?.name,
-      isDate: scheduledPayment.paymentDate instanceof Date,
-      startDate,
-      endDate,
-    });
-
     const dueDate = scheduledPayment.paymentDate;
 
-    console.log('[PaymentInstances] 📅 Comparación de fechas:', {
-      dueDate,
-      dueDateString: dueDate.toString?.(),
-      startDateString: startDate.toString(),
-      endDateString: endDate.toString(),
-      isAfterStart: dueDate >= startDate,
-      isBeforeEnd: dueDate <= endDate,
-      willGenerate: dueDate >= startDate && dueDate <= endDate,
-    });
-
     if (dueDate >= startDate && dueDate <= endDate) {
-      console.log('[PaymentInstances] ✅ Generando instancia para:', scheduledPayment.description);
       instances.push({
         userId: scheduledPayment.userId, // Mantener por compatibilidad
         householdId: scheduledPayment.householdId,
@@ -368,8 +347,6 @@ export function generateInstancesForDateRange(
         updatedBy: scheduledPayment.updatedBy,
         updatedByName: scheduledPayment.updatedByName,
       });
-    } else {
-      console.log('[PaymentInstances] ⚠️ Fecha fuera del rango, NO se genera instancia');
     }
     return instances;
   }
@@ -378,25 +355,9 @@ export function generateInstancesForDateRange(
   if (scheduledPayment.paymentType === 'service_payment' &&
       scheduledPayment.frequency === 'billing_cycle' &&
       scheduledPayment.paymentDate) {
-    console.log('[PaymentInstances] 🔍 Procesando pago billing_cycle con paymentDate:', {
-      description: scheduledPayment.description,
-      paymentDate: scheduledPayment.paymentDate,
-      paymentDateType: typeof scheduledPayment.paymentDate,
-      startDate,
-      endDate,
-    });
-
     const dueDate = scheduledPayment.paymentDate;
 
-    console.log('[PaymentInstances] 📅 Comparación de fechas billing_cycle:', {
-      dueDate,
-      isAfterStart: dueDate >= startDate,
-      isBeforeEnd: dueDate <= endDate,
-      willGenerate: dueDate >= startDate && dueDate <= endDate,
-    });
-
     if (dueDate >= startDate && dueDate <= endDate) {
-      console.log('[PaymentInstances] ✅ Generando instancia billing_cycle para:', scheduledPayment.description);
       instances.push({
         userId: scheduledPayment.userId,
         householdId: scheduledPayment.householdId,
@@ -414,8 +375,6 @@ export function generateInstancesForDateRange(
         updatedBy: scheduledPayment.updatedBy,
         updatedByName: scheduledPayment.updatedByName,
       });
-    } else {
-      console.log('[PaymentInstances] ⚠️ Fecha billing_cycle fuera del rango, NO se genera instancia');
     }
     return instances;
   }
@@ -453,13 +412,6 @@ export function generateInstancesForDateRange(
       // Para pagos únicos, solo generar una instancia
       if (scheduledPayment.frequency === 'once') break;
     }
-  }
-
-  console.log(`[PaymentInstances] Generadas ${instances.length} instancias para "${scheduledPayment.description}"`);
-  console.log(`[PaymentInstances] Rango: ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`);
-  if (instances.length > 0) {
-    console.log(`[PaymentInstances] Primera: ${instances[0].dueDate.toLocaleDateString()}`);
-    console.log(`[PaymentInstances] Última: ${instances[instances.length - 1].dueDate.toLocaleDateString()}`);
   }
 
   return instances;
@@ -542,8 +494,6 @@ export async function generateCurrentAndNextMonthInstances(
   );
 
   // Guardar en Firestore
-  console.log(`[PaymentInstances] 💾 Intentando guardar ${instancesToCreate.length} instancias nuevas`);
-
   for (const instance of instancesToCreate) {
     try {
       const dataToSave = {
@@ -553,17 +503,7 @@ export async function generateCurrentAndNextMonthInstances(
         updatedAt: serverTimestamp(),
       };
 
-      console.log('[PaymentInstances] 📝 Guardando instancia:', {
-        description: instance.description,
-        dueDate: instance.dueDate,
-        amount: instance.amount,
-        scheduledPaymentId: instance.scheduledPaymentId,
-        cardId: instance.cardId,
-        serviceId: instance.serviceId,
-      });
-
       await addDoc(collection(db, 'payment_instances'), dataToSave);
-      console.log('[PaymentInstances] ✅ Instancia guardada exitosamente');
     } catch (error) {
       console.error('[PaymentInstances] ❌ Error guardando instancia:', error);
       console.error('[PaymentInstances] Datos que causaron el error:', instance);
@@ -657,7 +597,6 @@ export async function ensureMonthlyInstances(
         ? serviceLines?.find(sl => sl.id === scheduledPayment.serviceLineId)
         : undefined;
 
-      console.log(`[ensureMonthlyInstances] Generando instancias para "${scheduledPayment.description}" - Mes actual: ${currentSnapshot.empty ? 'falta' : 'ok'}, Próximo mes: ${nextSnapshot.empty ? 'falta' : 'ok'}${serviceLine ? ` (línea: ${serviceLine.name})` : ''}`);
       await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine);
     }
   }
@@ -677,15 +616,11 @@ export async function updateExistingInstances(
   updatedByName: string,
   service?: Service
 ): Promise<void> {
-  console.log('[PaymentInstances] 🔄 Actualizando instancias existentes para:', scheduledPayment.id);
-
   // Obtener todas las instancias existentes del pago programado
   const existingInstances = await getExistingInstances(
     scheduledPayment.householdId,
     scheduledPayment.id
   );
-
-  console.log(`[PaymentInstances] 📋 Encontradas ${existingInstances.length} instancias`);
 
   // Generar las fechas esperadas para el pago programado
   const currentMonth = getCurrentMonthRange();
@@ -725,7 +660,6 @@ export async function updateExistingInstances(
   for (const existingInstance of existingInstances) {
     // Solo actualizar instancias que no estén pagadas o canceladas
     if (existingInstance.status === 'paid' || existingInstance.status === 'cancelled') {
-      console.log(`[PaymentInstances] ⏭️ Saltando instancia ${existingInstance.id} (estado: ${existingInstance.status})`);
       continue;
     }
 
@@ -738,7 +672,6 @@ export async function updateExistingInstances(
     });
 
     if (!expectedInstance) {
-      console.log(`[PaymentInstances] ⚠️ No se encontró instancia esperada para ${existingInstance.id}, saltando`);
       continue;
     }
 
@@ -764,31 +697,26 @@ export async function updateExistingInstances(
     // Actualizar dueDate si cambió
     if (expectedInstance.dueDate.getTime() !== existingInstance.dueDate.getTime()) {
       updates.dueDate = Timestamp.fromDate(expectedInstance.dueDate);
-      console.log(`[PaymentInstances] 📅 Actualizando fecha de ${existingInstance.dueDate.toISOString()} a ${expectedInstance.dueDate.toISOString()}`);
     }
 
     // Actualizar remainingAmount si hay pagos parciales
     if (existingInstance.status === 'partial' && partialPaymentsSum > 0) {
       updates.remainingAmount = newRemainingAmount;
-      console.log(`[PaymentInstances] 💰 Recalculando remainingAmount: ${scheduledPayment.amount} - ${partialPaymentsSum} = ${newRemainingAmount}`);
 
       // Si el nuevo remainingAmount es <= 0, marcar como pagado
       if (newRemainingAmount <= 0) {
         updates.status = 'paid';
         updates.paidAmount = scheduledPayment.amount;
         updates.paidDate = serverTimestamp();
-        console.log(`[PaymentInstances] ✅ Instancia ${existingInstance.id} marcada como pagada (monto ajustado)`);
       }
     }
 
     try {
       await updateDoc(doc(db, 'payment_instances', existingInstance.id), updates);
-      console.log(`[PaymentInstances] ✅ Instancia ${existingInstance.id} actualizada exitosamente`);
     } catch (error) {
       console.error(`[PaymentInstances] ❌ Error actualizando instancia ${existingInstance.id}:`, error);
       throw error;
     }
   }
 
-  console.log('[PaymentInstances] 🎉 Actualización de instancias completada');
 }
