@@ -477,7 +477,7 @@ export async function generateCurrentAndNextMonthInstances(
     allInstances = [...currentMonthInstances, ...nextMonthInstances];
   }
 
-  // Verificar cuáles ya existen
+  // Siempre revalidar contra Firestore para evitar duplicados en households compartidos
   const existingInstances = await getExistingInstances(
     scheduledPayment.householdId,
     scheduledPayment.id
@@ -548,7 +548,8 @@ export async function ensureMonthlyInstances(
   householdId: string,
   scheduledPayments: ScheduledPayment[],
   services?: Service[],
-  serviceLines?: ServiceLine[]
+  serviceLines?: ServiceLine[],
+  existingInstances?: PaymentInstance[]
 ): Promise<void> {
   const currentMonth = getCurrentMonthRange();
   const nextMonth = getNextMonthRange();
@@ -562,31 +563,49 @@ export async function ensureMonthlyInstances(
       continue;
     }
 
-    // Verificar si ya existen instancias para el mes actual
-    const currentMonthQuery = query(
-      collection(db, 'payment_instances'),
-      where('householdId', '==', householdId),
-      where('scheduledPaymentId', '==', scheduledPayment.id),
-      where('dueDate', '>=', Timestamp.fromDate(currentMonth.start)),
-      where('dueDate', '<=', Timestamp.fromDate(currentMonth.end))
-    );
+    let hasCurrentMonth: boolean;
+    let hasNextMonth: boolean;
 
-    // Verificar si ya existen instancias para el próximo mes
-    const nextMonthQuery = query(
-      collection(db, 'payment_instances'),
-      where('householdId', '==', householdId),
-      where('scheduledPaymentId', '==', scheduledPayment.id),
-      where('dueDate', '>=', Timestamp.fromDate(nextMonth.start)),
-      where('dueDate', '<=', Timestamp.fromDate(nextMonth.end))
-    );
+    if (existingInstances) {
+      // Filtrado en memoria: evitar queries Firestore individuales
+      const paymentInstances = existingInstances.filter(
+        i => i.scheduledPaymentId === scheduledPayment.id
+      );
+      hasCurrentMonth = paymentInstances.some(
+        i => i.dueDate >= currentMonth.start && i.dueDate <= currentMonth.end
+      );
+      hasNextMonth = paymentInstances.some(
+        i => i.dueDate >= nextMonth.start && i.dueDate <= nextMonth.end
+      );
+    } else {
+      // Fallback: queries Firestore para llamadas fuera del Dashboard
+      const currentMonthQuery = query(
+        collection(db, 'payment_instances'),
+        where('householdId', '==', householdId),
+        where('scheduledPaymentId', '==', scheduledPayment.id),
+        where('dueDate', '>=', Timestamp.fromDate(currentMonth.start)),
+        where('dueDate', '<=', Timestamp.fromDate(currentMonth.end))
+      );
 
-    const [currentSnapshot, nextSnapshot] = await Promise.all([
-      getDocs(currentMonthQuery),
-      getDocs(nextMonthQuery)
-    ]);
+      const nextMonthQuery = query(
+        collection(db, 'payment_instances'),
+        where('householdId', '==', householdId),
+        where('scheduledPaymentId', '==', scheduledPayment.id),
+        where('dueDate', '>=', Timestamp.fromDate(nextMonth.start)),
+        where('dueDate', '<=', Timestamp.fromDate(nextMonth.end))
+      );
+
+      const [currentSnapshot, nextSnapshot] = await Promise.all([
+        getDocs(currentMonthQuery),
+        getDocs(nextMonthQuery)
+      ]);
+
+      hasCurrentMonth = !currentSnapshot.empty;
+      hasNextMonth = !nextSnapshot.empty;
+    }
 
     // Si faltan instancias en cualquiera de los dos meses, regenerar
-    if (currentSnapshot.empty || nextSnapshot.empty) {
+    if (!hasCurrentMonth || !hasNextMonth) {
       // Buscar el servicio asociado si es billing_cycle
       const service = scheduledPayment.frequency === 'billing_cycle' && scheduledPayment.serviceId
         ? services?.find(s => s.id === scheduledPayment.serviceId)
