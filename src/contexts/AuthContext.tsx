@@ -64,6 +64,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        // Forzar refresh del token para obtener Custom Claims actualizados
+        // (householdId se usa en las reglas de seguridad de Firestore)
+        await user.getIdToken(true);
+
         // Primera vez: obtener datos del usuario desde Firestore
         try {
           const userDocRef = doc(db, 'users', user.uid);
