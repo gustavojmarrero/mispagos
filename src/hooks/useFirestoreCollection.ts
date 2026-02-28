@@ -45,6 +45,7 @@ export function useFirestoreCollection<T extends { id: string }>(
   } = options;
 
   const { currentUser } = useAuth();
+  const householdId = currentUser?.householdId ?? null;
   const [rawData, setRawData] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +55,7 @@ export function useFirestoreCollection<T extends { id: string }>(
   additionalConstraintsRef.current = additionalConstraints;
 
   const fetchData = useCallback(async () => {
-    if (!currentUser || !enabled) {
+    if (!householdId || !enabled) {
       setLoading(false);
       return;
     }
@@ -62,7 +63,7 @@ export function useFirestoreCollection<T extends { id: string }>(
     try {
       setLoading(true);
       const constraints: QueryConstraint[] = [
-        where('householdId', '==', currentUser.householdId),
+        where('householdId', '==', householdId),
         ...(additionalConstraintsRef.current || [])
       ];
 
@@ -87,7 +88,7 @@ export function useFirestoreCollection<T extends { id: string }>(
     } finally {
       setLoading(false);
     }
-  }, [currentUser, collectionName, enabled, errorMessage, constraintsKey]);
+  }, [householdId, collectionName, enabled, errorMessage, constraintsKey]);
 
   useEffect(() => {
     fetchData();

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
@@ -31,6 +31,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const currentUserRef = useRef<User | null>(null);
+
+  // Solo actualiza estado si los valores relevantes cambiaron.
+  // Evita re-renders causados por token refresh de Firebase Auth.
+  const setStableUser = useCallback((next: User | null) => {
+    const prev = currentUserRef.current;
+    if (
+      prev &&
+      next &&
+      prev.id === next.id &&
+      prev.email === next.email &&
+      prev.name === next.name &&
+      prev.householdId === next.householdId
+    ) {
+      return; // misma identidad → no actualizar
+    }
+    currentUserRef.current = next;
+    setCurrentUser(next);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -44,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            setCurrentUser({
+            setStableUser({
               id: user.uid,
               email: user.email || '',
               name: userData.name || '',
@@ -62,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             await setDoc(userDocRef, newUserData);
 
-            setCurrentUser({
+            setStableUser({
               id: user.uid,
               email: user.email || '',
               name: newUserData.name,
@@ -73,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (error) {
           console.error('Error fetching/creating user data:', error);
-          setCurrentUser({
+          setStableUser({
             id: user.uid,
             email: user.email || '',
             name: user.email?.split('@')[0] || 'Usuario',
@@ -81,14 +100,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         }
       } else {
-        setCurrentUser(null);
+        setStableUser(null);
       }
 
       setLoading(false);
     });
 
     return unsubscribe;
-  }, []);
+  }, [setStableUser]);
 
   const signIn = async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);

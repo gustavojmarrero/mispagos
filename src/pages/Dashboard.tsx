@@ -24,6 +24,7 @@ import { staggerContainer, staggerItem } from '@/utils/animations';
 
 export function Dashboard() {
   const { currentUser } = useAuth();
+  const householdId = currentUser?.householdId ?? null;
   const { services } = useServices();
   const { banks } = useBanks();
   const { serviceLines } = useServiceLines({ activeOnly: true });
@@ -31,17 +32,27 @@ export function Dashboard() {
   const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dataLoaded, setDataLoaded] = useState(false);
   const instancesGeneratedRef = useRef(false);
+  const isGeneratingRef = useRef(false);
+
+  // Refs para datos auxiliares que no deben ser dependencias del efecto de generación
+  const servicesRef = useRef(services);
+  servicesRef.current = services;
+  const serviceLinesRef = useRef(serviceLines);
+  serviceLinesRef.current = serviceLines;
+  const paymentInstancesRef = useRef(paymentInstances);
+  paymentInstancesRef.current = paymentInstances;
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!householdId) return;
 
     const fetchData = async () => {
       try {
         // Fetch cards
         const cardsQuery = query(
           collection(db, 'cards'),
-          where('householdId', '==', currentUser.householdId)
+          where('householdId', '==', householdId)
         );
         const cardsSnapshot = await getDocs(cardsQuery);
         const cardsData = cardsSnapshot.docs.map((doc) => ({
@@ -54,7 +65,7 @@ export function Dashboard() {
         // Fetch payment instances
         const instancesQuery = query(
           collection(db, 'payment_instances'),
-          where('householdId', '==', currentUser.householdId)
+          where('householdId', '==', householdId)
         );
         const instancesSnapshot = await getDocs(instancesQuery);
         const instancesData = instancesSnapshot.docs.map((doc) => ({
@@ -69,7 +80,7 @@ export function Dashboard() {
         // Fetch scheduled payments
         const scheduledQuery = query(
           collection(db, 'scheduled_payments'),
-          where('householdId', '==', currentUser.householdId)
+          where('householdId', '==', householdId)
         );
         const scheduledSnapshot = await getDocs(scheduledQuery);
         const scheduledData = scheduledSnapshot.docs.map((doc) => ({
@@ -83,6 +94,7 @@ export function Dashboard() {
         setCards(cardsData);
         setPaymentInstances(instancesData);
         setScheduledPayments(scheduledData);
+        setDataLoaded(true);
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {
@@ -91,31 +103,34 @@ export function Dashboard() {
     };
 
     fetchData();
-  }, [currentUser]);
+  }, [householdId]);
 
   // Trigger: generar instancias faltantes del mes actual y siguiente
   useEffect(() => {
-    if (!currentUser || loading || instancesGeneratedRef.current) return;
+    if (!householdId || loading || !dataLoaded || instancesGeneratedRef.current || isGeneratingRef.current) return;
     if (scheduledPayments.length === 0) return;
 
     const generateMissingInstances = async () => {
+      isGeneratingRef.current = true;
       try {
         await ensureMonthlyInstances(
-          currentUser.householdId,
+          householdId,
           scheduledPayments,
-          services,
-          serviceLines,
-          paymentInstances
+          servicesRef.current,
+          serviceLinesRef.current,
+          paymentInstancesRef.current
         );
         instancesGeneratedRef.current = true;
       } catch (error: unknown) {
         const firebaseError = error as { message?: string; code?: string };
         console.error('[Dashboard] Error generando instancias:', firebaseError.code, firebaseError.message);
+      } finally {
+        isGeneratingRef.current = false;
       }
     };
 
     generateMissingInstances();
-  }, [currentUser, loading, scheduledPayments, services, serviceLines]);
+  }, [householdId, loading, dataLoaded, scheduledPayments]);
 
   // Rango de fechas fijo: mes actual
   const dateRange = useMemo(() => {
