@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
@@ -56,7 +56,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setFirebaseUser(user);
 
       if (user) {
-        // Obtener datos adicionales del usuario desde Firestore
+        // Si ya tenemos datos del usuario con el mismo UID, reusar sin leer Firestore.
+        // Esto evita lecturas innecesarias en token refresh (~cada 60 min).
+        const cached = currentUserRef.current;
+        if (cached && cached.id === user.uid) {
+          setLoading(false);
+          return;
+        }
+
+        // Primera vez: obtener datos del usuario desde Firestore
         try {
           const userDocRef = doc(db, 'users', user.uid);
           const userDoc = await getDoc(userDocRef);
@@ -109,21 +117,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsubscribe;
   }, [setStableUser]);
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = useCallback(async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await firebaseSignOut(auth);
-  };
+  }, []);
 
-  const value: AuthContextType = {
+  const value: AuthContextType = useMemo(() => ({
     currentUser,
     firebaseUser,
     loading,
     signIn,
     signOut,
-  };
+  }), [currentUser, firebaseUser, loading, signIn, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
