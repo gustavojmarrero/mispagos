@@ -71,7 +71,7 @@ export function Services() {
   useEffect(() => {
     fetchServices();
     fetchPaymentInstances();
-  }, [currentUser]);
+  }, [currentUser?.householdId]);
 
   // Abrir panel de servicio automáticamente si viene viewService en la URL (desde alertas del Dashboard)
   useEffect(() => {

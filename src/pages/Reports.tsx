@@ -42,7 +42,7 @@ export function Reports() {
 
   useEffect(() => {
     fetchData();
-  }, [currentUser]);
+  }, [currentUser?.householdId]);
 
   useEffect(() => {
     if (!loading) {

@@ -128,7 +128,7 @@ export function Cards() {
 
   useEffect(() => {
     fetchCards();
-  }, [currentUser]);
+  }, [currentUser?.householdId]);
 
   // Calcular automáticamente el saldo actual
   useEffect(() => {

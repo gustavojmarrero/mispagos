@@ -118,11 +118,16 @@ export function PaymentCalendar() {
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
 
+  // Cards y scheduled_payments solo dependen del householdId
   useEffect(() => {
-    fetchInstances();
     fetchCards();
     fetchScheduledPayments();
-  }, [currentUser, timeFilter, customStartDate, customEndDate]);
+  }, [currentUser?.householdId]);
+
+  // Instances dependen también de los filtros de fecha
+  useEffect(() => {
+    fetchInstances();
+  }, [currentUser?.householdId, timeFilter, customStartDate, customEndDate]);
 
   // Calcular estado del ciclo vigente para cada línea de servicio
   const lineStatusMap = useMemo(() => {

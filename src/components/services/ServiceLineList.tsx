@@ -80,7 +80,7 @@ export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps
     };
 
     fetchScheduledPayments();
-  }, [currentUser, service.id]);
+  }, [currentUser?.householdId, service.id]);
 
   // Verificar si una línea tiene pago programado
   const hasScheduledPayment = (lineId: string): boolean => {

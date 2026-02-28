@@ -43,7 +43,7 @@ export function Banks() {
 
   useEffect(() => {
     fetchBanks();
-  }, [currentUser]);
+  }, [currentUser?.householdId]);
 
   const fetchBanks = async () => {
     if (!currentUser) return;

@@ -37,7 +37,7 @@ export function Expenses() {
 
   useEffect(() => {
     fetchData();
-  }, [currentUser]);
+  }, [currentUser?.householdId]);
 
   const fetchData = async () => {
     if (!currentUser) return;

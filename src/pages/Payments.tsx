@@ -192,7 +192,7 @@ export function Payments() {
     fetchPayments();
     fetchCards();
     fetchPaymentInstances();
-  }, [currentUser]);
+  }, [currentUser?.householdId]);
 
   // Calcular estado del ciclo vigente para cada línea de servicio
   const lineStatusMap = useMemo(() => {
