@@ -12,11 +12,10 @@ service cloud.firestore {
     }
 
     function canAccessHousehold(householdId) {
-      // Permitir acceso si el usuario es miembro del household
-      // Verificamos si existe un documento de usuario con el householdId correcto
+      // Usa Custom Claim del token para verificar acceso al household.
+      // Elimina get()/exists() que costaban 1 lectura por cada operación.
       return isAuthenticated() &&
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.householdId == householdId;
+             request.auth.token.householdId == householdId;
     }
 
     function canAccessResource(data) {
