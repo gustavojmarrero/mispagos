@@ -102,6 +102,14 @@ firebase deploy --only firestore:rules
 - `/src/pages/Dashboard.tsx` - Flujo principal de la app
 - `firestore.rules` - Reglas de seguridad Firestore
 
+## Flujo de Git
+
+- **Rama base:** Siempre crear ramas nuevas desde `development`
+- **Naming:** `fix/descripcion` para bugs, `feature/descripcion` para nuevas funcionalidades, `perf/descripcion` para optimizaciones
+- **Flujo:** `development` → crear rama → PR hacia `development` → merge → promoción a `main` vía PR
+- **Nunca** hacer commit directo a `main` ni a `development`
+- **Deploy:** Solo se despliega desde `main` después de la promoción
+
 ## Configuración Firebase
 
 - Proyecto: `mispagos-sangus`
