@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
+import type { PaymentInstance } from '@/lib/types';
 import {
   calculateServicesAnalysis,
   calculateCashProjection,
@@ -15,13 +19,17 @@ import { DateRangeFilter } from '@/components/dashboard/DateRangeFilter';
 import type { DateRange } from '@/components/dashboard/DateRangeFilter';
 
 export function Reports() {
+  const { currentUser } = useAuth();
   const {
     cards,
     services,
     scheduledPayments,
-    paymentInstances: instances,
+    paymentInstances: contextInstances,
     loading,
   } = useData();
+
+  // Instancias locales para rangos que exceden la ventana del contexto (3 meses)
+  const [localInstances, setLocalInstances] = useState<PaymentInstance[]>([]);
 
   // Date range state
   const [dateRange, setDateRange] = useState<DateRange>(() => {
@@ -30,6 +38,49 @@ export function Reports() {
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
     return { from: startOfMonth, to: endOfMonth, preset: 'current-month' };
   });
+
+  // Determinar si el rango de fecha excede la ventana del contexto (3 meses atras)
+  const needsExtendedFetch = useMemo(() => {
+    if (dateRange.preset === 'all' || dateRange.preset === 'last-6-months') return true;
+    if (!dateRange.from) return true;
+    const contextStart = new Date();
+    contextStart.setMonth(contextStart.getMonth() - 3, 1);
+    contextStart.setHours(0, 0, 0, 0);
+    return dateRange.from < contextStart;
+  }, [dateRange]);
+
+  // Fetch extendido cuando el rango excede la ventana del contexto
+  useEffect(() => {
+    if (!needsExtendedFetch || !currentUser) {
+      setLocalInstances([]);
+      return;
+    }
+    const fetchExtended = async () => {
+      try {
+        const q = query(
+          collection(db, 'payment_instances'),
+          where('householdId', '==', currentUser.householdId),
+        );
+        const snapshot = await getDocs(q);
+        setLocalInstances(snapshot.docs.map((doc) => {
+          const d = doc.data();
+          return {
+            ...d,
+            id: doc.id,
+            dueDate: d.dueDate?.toDate() || new Date(),
+            paidDate: d.paidDate?.toDate(),
+            createdAt: d.createdAt?.toDate() || new Date(),
+            updatedAt: d.updatedAt?.toDate() || new Date(),
+          } as PaymentInstance;
+        }));
+      } catch (err) {
+        console.error('Error fetching extended instances:', err);
+      }
+    };
+    fetchExtended();
+  }, [needsExtendedFetch, currentUser]);
+
+  const instances = needsExtendedFetch ? localInstances : contextInstances;
 
   // Metrics state
   const [servicesAnalysis, setServicesAnalysis] = useState<ServicesAnalysis | null>(null);
