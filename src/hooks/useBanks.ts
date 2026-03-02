@@ -1,14 +1,14 @@
-import { useFirestoreCollection } from './useFirestoreCollection';
+import { useMemo } from 'react';
+import { useData } from '@/contexts/DataContext';
 import type { Bank } from '@/lib/types';
 
-const sortByName = (data: Bank[]) => data.sort((a, b) => a.name.localeCompare(b.name));
-
 export function useBanks() {
-  const { data: banks, loading, error } = useFirestoreCollection<Bank>({
-    collectionName: 'banks',
-    transform: sortByName,
-    errorMessage: 'Error al cargar bancos'
-  });
+  const { banks: rawBanks, loading, errors, refetchBanks } = useData();
 
-  return { banks, loading, error };
+  const banks = useMemo(
+    () => [...rawBanks].sort((a: Bank, b: Bank) => a.name.localeCompare(b.name)),
+    [rawBanks]
+  );
+
+  return { banks, loading, error: errors.banks ?? null, refetch: refetchBanks };
 }

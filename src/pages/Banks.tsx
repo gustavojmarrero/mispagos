@@ -1,17 +1,15 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
-  collection,
-  query,
-  where,
-  getDocs,
   addDoc,
   updateDoc,
   deleteDoc,
   doc,
+  collection,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -29,8 +27,7 @@ import { Building2, Edit, Trash2, Plus, X, Search, Loader2 } from 'lucide-react'
 
 export function Banks() {
   const { currentUser } = useAuth();
-  const [banks, setBanks] = useState<Bank[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { banks, loading, refetchBanks } = useData();
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingBank, setEditingBank] = useState<Bank | null>(null);
@@ -40,34 +37,6 @@ export function Banks() {
     name: '',
     code: '',
   });
-
-  useEffect(() => {
-    fetchBanks();
-  }, [currentUser?.householdId]);
-
-  const fetchBanks = async () => {
-    if (!currentUser) return;
-
-    try {
-      const banksQuery = query(
-        collection(db, 'banks'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const snapshot = await getDocs(banksQuery);
-      const banksData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as Bank[];
-
-      setBanks(banksData);
-    } catch (error) {
-      console.error('Error fetching banks:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,7 +70,7 @@ export function Banks() {
       }
 
       resetForm();
-      await fetchBanks();
+      await refetchBanks();
     } catch (error) {
       console.error('Error saving bank:', error);
       toast.error('Error al guardar el banco');
@@ -126,7 +95,7 @@ export function Banks() {
       // TODO: Verificar que no haya tarjetas asociadas
       await deleteDoc(doc(db, 'banks', bankId));
       toast.success('Banco eliminado exitosamente');
-      await fetchBanks();
+      await refetchBanks();
     } catch (error) {
       console.error('Error deleting bank:', error);
       toast.error('Error al eliminar el banco');

@@ -13,6 +13,7 @@ import {
   getDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useData } from '@/contexts/DataContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/contexts/AuthContext';
 import { useBanks } from '@/hooks/useBanks';
@@ -63,8 +64,7 @@ import { formatCurrency } from '@/lib/utils';
 export function Cards() {
   const { currentUser } = useAuth();
   const { banks } = useBanks();
-  const [cards, setCards] = useState<CardType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { cards, loading, refetchCards } = useData();
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCard, setEditingCard] = useState<CardType | null>(null);
@@ -126,10 +126,6 @@ export function Cards() {
   const [partialAmount, setPartialAmount] = useState('');
   const [partialNotes, setPartialNotes] = useState('');
 
-  useEffect(() => {
-    fetchCards();
-  }, [currentUser?.householdId]);
-
   // Calcular automáticamente el saldo actual
   useEffect(() => {
     const calculatedBalance = formData.creditLimit - formData.availableCredit;
@@ -140,35 +136,6 @@ export function Cards() {
       }));
     }
   }, [formData.creditLimit, formData.availableCredit]);
-
-  const fetchCards = async () => {
-    if (!currentUser) return;
-
-    try {
-      const cardsQuery = query(
-        collection(db, 'cards'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const snapshot = await getDocs(cardsQuery);
-      const cardsData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-        // Valores por defecto para campos nuevos
-        cardType: doc.data().cardType || 'Departamental',
-        owner: doc.data().owner || 'Gustavo',
-        bankId: doc.data().bankId || '',
-        availableCredit: doc.data().availableCredit || 0,
-      })) as CardType[];
-
-      setCards(cardsData.sort((a, b) => a.name.localeCompare(b.name)));
-    } catch (error) {
-      console.error('Error fetching cards:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getStatusBadge = (status: PaymentStatus) => {
     const variants: Record<PaymentStatus, { variant: 'default' | 'secondary' | 'destructive', label: string }> = {
@@ -227,14 +194,8 @@ export function Cards() {
         updatedByName: currentUser.name,
       });
 
-      // Actualizar estado local
-      setCards(prevCards =>
-        prevCards.map(card =>
-          card.id === cardId
-            ? { ...card, availableCredit: newAvailableCredit, currentBalance: newCurrentBalance }
-            : card
-        )
-      );
+      // Refrescar cards del contexto
+      await refetchCards();
 
       // Actualizar viewingCard si es la misma tarjeta
       if (viewingCard?.id === cardId) {
@@ -548,7 +509,7 @@ export function Cards() {
       }
 
       resetForm();
-      await fetchCards();
+      await refetchCards();
     } catch (error) {
       console.error('Error saving card:', error);
       toast.error('Error al guardar la tarjeta');
@@ -632,7 +593,7 @@ export function Cards() {
     try {
       await deleteDoc(doc(db, 'cards', cardId));
       toast.success('Tarjeta eliminada exitosamente');
-      await fetchCards();
+      await refetchCards();
     } catch (error) {
       console.error('Error deleting card:', error);
       toast.error('Error al eliminar la tarjeta');

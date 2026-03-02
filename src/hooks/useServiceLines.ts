@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useFirestoreCollection } from './useFirestoreCollection';
+import { useData } from '@/contexts/DataContext';
 import type { ServiceLine } from '@/lib/types';
 
 interface UseServiceLinesOptions {
@@ -9,9 +9,10 @@ interface UseServiceLinesOptions {
 
 export function useServiceLines(options: UseServiceLinesOptions = {}) {
   const { serviceId, activeOnly = true } = options;
+  const { serviceLines: rawServiceLines, loading, errors, refetchServiceLines } = useData();
 
-  const transform = useMemo(() => (data: ServiceLine[]): ServiceLine[] => {
-    let result = data;
+  const serviceLines = useMemo(() => {
+    let result = [...rawServiceLines];
 
     if (serviceId) {
       result = result.filter(line => line.serviceId === serviceId);
@@ -21,37 +22,25 @@ export function useServiceLines(options: UseServiceLinesOptions = {}) {
       result = result.filter(line => line.isActive);
     }
 
-    return result.sort((a, b) => a.name.localeCompare(b.name));
-  }, [serviceId, activeOnly]);
+    return result.sort((a: ServiceLine, b: ServiceLine) => a.name.localeCompare(b.name));
+  }, [rawServiceLines, serviceId, activeOnly]);
 
-  const { data: serviceLines, loading, error, refetch } = useFirestoreCollection<ServiceLine>({
-    collectionName: 'service_lines',
-    transform,
-    errorMessage: 'Error al cargar líneas de servicio'
-  });
-
-  return { serviceLines, loading, error, refetch };
+  return { serviceLines, loading, error: errors.serviceLines ?? null, refetch: refetchServiceLines };
 }
 
 export function useServiceLinesGrouped() {
   const { serviceLines, loading, error, refetch } = useServiceLines({ activeOnly: false });
 
-  const groupedByService = useMemo(() => {
-    return serviceLines.reduce((acc, line) => {
-      if (!acc[line.serviceId]) {
-        acc[line.serviceId] = [];
-      }
-      acc[line.serviceId].push(line);
-      return acc;
-    }, {} as Record<string, ServiceLine[]>);
+  const { groupedByService, linesCountByService } = useMemo(() => {
+    const grouped: Record<string, ServiceLine[]> = {};
+    const counts: Record<string, number> = {};
+    for (const line of serviceLines) {
+      if (!grouped[line.serviceId]) { grouped[line.serviceId] = []; counts[line.serviceId] = 0; }
+      grouped[line.serviceId].push(line);
+      if (line.isActive) counts[line.serviceId]++;
+    }
+    return { groupedByService: grouped, linesCountByService: counts };
   }, [serviceLines]);
-
-  const linesCountByService = useMemo(() => {
-    return Object.entries(groupedByService).reduce((acc, [serviceId, lines]) => {
-      acc[serviceId] = lines.filter(l => l.isActive).length;
-      return acc;
-    }, {} as Record<string, number>);
-  }, [groupedByService]);
 
   return {
     serviceLines,

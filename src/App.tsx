@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { DataProvider } from '@/contexts/DataContext';
 import { LoginForm } from '@/components/auth/LoginForm';
 import { PrivateRoute } from '@/components/auth/PrivateRoute';
 import { Layout } from '@/components/layout/Layout';
@@ -22,7 +23,9 @@ function App() {
             path="/"
             element={
               <PrivateRoute>
-                <Layout />
+                <DataProvider>
+                  <Layout />
+                </DataProvider>
               </PrivateRoute>
             }
           >
