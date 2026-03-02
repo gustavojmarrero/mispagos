@@ -1,11 +1,9 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
 import { useServices } from '@/hooks/useServices';
 import { useBanks } from '@/hooks/useBanks';
 import { useServiceLines } from '@/hooks/useServiceLines';
-import type { Card as CardType, PaymentInstance, ScheduledPayment } from '@/lib/types';
 import {
   calculateWeeklyCashFlow,
   analyzeCardPeriods,
@@ -25,14 +23,16 @@ import { staggerContainer, staggerItem } from '@/utils/animations';
 export function Dashboard() {
   const { currentUser } = useAuth();
   const householdId = currentUser?.householdId ?? null;
+  const {
+    cards,
+    paymentInstances,
+    scheduledPayments,
+    loading,
+    refetchPaymentInstances,
+  } = useData();
   const { services } = useServices();
   const { banks } = useBanks();
   const { serviceLines } = useServiceLines({ activeOnly: true });
-  const [cards, setCards] = useState<CardType[]>([]);
-  const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
-  const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dataLoaded, setDataLoaded] = useState(false);
   const instancesGeneratedRef = useRef(false);
   const isGeneratingRef = useRef(false);
 
@@ -44,70 +44,9 @@ export function Dashboard() {
   const paymentInstancesRef = useRef(paymentInstances);
   paymentInstancesRef.current = paymentInstances;
 
-  useEffect(() => {
-    if (!householdId) return;
-
-    const fetchData = async () => {
-      try {
-        // Fetch cards
-        const cardsQuery = query(
-          collection(db, 'cards'),
-          where('householdId', '==', householdId)
-        );
-        const cardsSnapshot = await getDocs(cardsQuery);
-        const cardsData = cardsSnapshot.docs.map((doc) => ({
-          ...doc.data(),
-          id: doc.id,
-          createdAt: doc.data().createdAt?.toDate() || new Date(),
-          updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-        })) as CardType[];
-
-        // Fetch payment instances
-        const instancesQuery = query(
-          collection(db, 'payment_instances'),
-          where('householdId', '==', householdId)
-        );
-        const instancesSnapshot = await getDocs(instancesQuery);
-        const instancesData = instancesSnapshot.docs.map((doc) => ({
-          ...doc.data(),
-          id: doc.id,
-          dueDate: doc.data().dueDate?.toDate() || new Date(),
-          paidDate: doc.data().paidDate?.toDate(),
-          createdAt: doc.data().createdAt?.toDate() || new Date(),
-          updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-        })) as PaymentInstance[];
-
-        // Fetch scheduled payments
-        const scheduledQuery = query(
-          collection(db, 'scheduled_payments'),
-          where('householdId', '==', householdId)
-        );
-        const scheduledSnapshot = await getDocs(scheduledQuery);
-        const scheduledData = scheduledSnapshot.docs.map((doc) => ({
-          ...doc.data(),
-          id: doc.id,
-          paymentDate: doc.data().paymentDate?.toDate(),
-          createdAt: doc.data().createdAt?.toDate() || new Date(),
-          updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-        })) as ScheduledPayment[];
-
-        setCards(cardsData);
-        setPaymentInstances(instancesData);
-        setScheduledPayments(scheduledData);
-        setDataLoaded(true);
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [householdId]);
-
   // Trigger: generar instancias faltantes del mes actual y siguiente
   useEffect(() => {
-    if (!householdId || loading || !dataLoaded || instancesGeneratedRef.current || isGeneratingRef.current) return;
+    if (!householdId || loading || instancesGeneratedRef.current || isGeneratingRef.current) return;
     if (scheduledPayments.length === 0) return;
 
     const generateMissingInstances = async () => {
@@ -121,6 +60,8 @@ export function Dashboard() {
           paymentInstancesRef.current
         );
         instancesGeneratedRef.current = true;
+        // Refetch para obtener instancias recién creadas
+        await refetchPaymentInstances();
       } catch (error: unknown) {
         const firebaseError = error as { message?: string; code?: string };
         console.error('[Dashboard] Error generando instancias:', firebaseError.code, firebaseError.message);
@@ -130,7 +71,7 @@ export function Dashboard() {
     };
 
     generateMissingInstances();
-  }, [householdId, loading, dataLoaded, scheduledPayments]);
+  }, [householdId, loading, scheduledPayments, refetchPaymentInstances]);
 
   // Rango de fechas fijo: mes actual
   const dateRange = useMemo(() => {

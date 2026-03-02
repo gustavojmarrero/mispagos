@@ -1,14 +1,14 @@
-import { useFirestoreCollection } from './useFirestoreCollection';
+import { useMemo } from 'react';
+import { useData } from '@/contexts/DataContext';
 import type { Service } from '@/lib/types';
 
-const sortByName = (data: Service[]) => data.sort((a, b) => a.name.localeCompare(b.name));
-
 export function useServices() {
-  const { data: services, loading, error } = useFirestoreCollection<Service>({
-    collectionName: 'services',
-    transform: sortByName,
-    errorMessage: 'Error al cargar servicios'
-  });
+  const { services: rawServices, loading, errors, refetchServices } = useData();
 
-  return { services, loading, error };
+  const services = useMemo(
+    () => [...rawServices].sort((a: Service, b: Service) => a.name.localeCompare(b.name)),
+    [rawServices]
+  );
+
+  return { services, loading, error: errors.services ?? null, refetch: refetchServices };
 }

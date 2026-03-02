@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Card as CardType, Service, ScheduledPayment, PaymentInstance } from '@/lib/types';
+import { useData } from '@/contexts/DataContext';
+import type { PaymentInstance } from '@/lib/types';
 import {
   calculateServicesAnalysis,
   calculateCashProjection,
@@ -19,13 +20,16 @@ import type { DateRange } from '@/components/dashboard/DateRangeFilter';
 
 export function Reports() {
   const { currentUser } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const {
+    cards,
+    services,
+    scheduledPayments,
+    paymentInstances: contextInstances,
+    loading,
+  } = useData();
 
-  // Data state
-  const [cards, setCards] = useState<CardType[]>([]);
-  const [services, setServices] = useState<Service[]>([]);
-  const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
-  const [instances, setInstances] = useState<PaymentInstance[]>([]);
+  // Instancias locales para rangos que exceden la ventana del contexto (3 meses)
+  const [localInstances, setLocalInstances] = useState<PaymentInstance[]>([]);
 
   // Date range state
   const [dateRange, setDateRange] = useState<DateRange>(() => {
@@ -35,92 +39,59 @@ export function Reports() {
     return { from: startOfMonth, to: endOfMonth, preset: 'current-month' };
   });
 
+  // Determinar si el rango de fecha excede la ventana del contexto (3 meses atras)
+  const needsExtendedFetch = useMemo(() => {
+    if (dateRange.preset === 'all' || dateRange.preset === 'last-6-months') return true;
+    if (!dateRange.from) return true;
+    const contextStart = new Date();
+    contextStart.setMonth(contextStart.getMonth() - 3, 1);
+    contextStart.setHours(0, 0, 0, 0);
+    return dateRange.from < contextStart;
+  }, [dateRange]);
+
+  // Fetch extendido cuando el rango excede la ventana del contexto
+  useEffect(() => {
+    if (!needsExtendedFetch || !currentUser) {
+      setLocalInstances([]);
+      return;
+    }
+    const fetchExtended = async () => {
+      try {
+        const q = query(
+          collection(db, 'payment_instances'),
+          where('householdId', '==', currentUser.householdId),
+        );
+        const snapshot = await getDocs(q);
+        setLocalInstances(snapshot.docs.map((doc) => {
+          const d = doc.data();
+          return {
+            ...d,
+            id: doc.id,
+            dueDate: d.dueDate?.toDate() || new Date(),
+            paidDate: d.paidDate?.toDate(),
+            createdAt: d.createdAt?.toDate() || new Date(),
+            updatedAt: d.updatedAt?.toDate() || new Date(),
+          } as PaymentInstance;
+        }));
+      } catch (err) {
+        console.error('Error fetching extended instances:', err);
+      }
+    };
+    fetchExtended();
+  }, [needsExtendedFetch, currentUser]);
+
+  const instances = needsExtendedFetch ? localInstances : contextInstances;
+
   // Metrics state
   const [servicesAnalysis, setServicesAnalysis] = useState<ServicesAnalysis | null>(null);
   const [cashProjection, setCashProjection] = useState<CashProjection | null>(null);
   const [creditSummary, setCreditSummary] = useState<CreditSummary | null>(null);
 
   useEffect(() => {
-    fetchData();
-  }, [currentUser?.householdId]);
-
-  useEffect(() => {
     if (!loading) {
       calculateMetrics();
     }
-  }, [dateRange, loading]);
-
-  const fetchData = async () => {
-    if (!currentUser) return;
-
-    try {
-      setLoading(true);
-
-      // Fetch Cards
-      const cardsQuery = query(
-        collection(db, 'cards'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const cardsSnapshot = await getDocs(cardsQuery);
-      const cardsData = cardsSnapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as CardType[];
-      setCards(cardsData);
-
-      // Fetch Services
-      const servicesQuery = query(
-        collection(db, 'services'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const servicesSnapshot = await getDocs(servicesQuery);
-      const servicesData = servicesSnapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as Service[];
-      setServices(servicesData);
-
-      // Fetch Scheduled Payments
-      const scheduledQuery = query(
-        collection(db, 'scheduled_payments'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const scheduledSnapshot = await getDocs(scheduledQuery);
-      const scheduledData = scheduledSnapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        paymentDate: doc.data().paymentDate?.toDate(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as ScheduledPayment[];
-      setScheduledPayments(scheduledData);
-
-      // Fetch Payment Instances
-      const instancesQuery = query(
-        collection(db, 'payment_instances'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const instancesSnapshot = await getDocs(instancesQuery);
-      const instancesData = instancesSnapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        dueDate: doc.data().dueDate?.toDate() || new Date(),
-        paidDate: doc.data().paidDate?.toDate(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as PaymentInstance[];
-      setInstances(instancesData);
-
-    } catch (error) {
-      console.error('Error fetching data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [dateRange, loading, cards, services, scheduledPayments, instances]);
 
   const calculateMetrics = () => {
     // Use date range, or default to "all time" if null

@@ -1,18 +1,16 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  collection,
-  query,
-  where,
-  getDocs,
   addDoc,
   updateDoc,
   deleteDoc,
   doc,
+  collection,
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -25,7 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import type { Service, ServiceFormData, PaymentMethod, ServiceType, PaymentInstance } from '@/lib/types';
+import type { Service, ServiceFormData, PaymentMethod, ServiceType } from '@/lib/types';
 import { Store, Plus, X, Search, Loader2, CreditCard, Banknote, Edit, Calendar, CalendarCheck, Cable } from 'lucide-react';
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { ServiceGridItem } from '@/components/services/ServiceGridItem';
@@ -44,10 +42,13 @@ import {
 
 export function Services() {
   const { currentUser } = useAuth();
+  const {
+    services,
+    paymentInstances,
+    loading,
+    refetchServices,
+  } = useData();
   const [searchParams] = useSearchParams();
-  const [services, setServices] = useState<Service[]>([]);
-  const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -68,11 +69,6 @@ export function Services() {
   // Hook para obtener líneas de servicio agrupadas
   const { linesCountByService, refetch: refetchServiceLines } = useServiceLinesGrouped();
 
-  useEffect(() => {
-    fetchServices();
-    fetchPaymentInstances();
-  }, [currentUser?.householdId]);
-
   // Abrir panel de servicio automáticamente si viene viewService en la URL (desde alertas del Dashboard)
   useEffect(() => {
     const viewServiceId = searchParams.get('viewService');
@@ -84,55 +80,19 @@ export function Services() {
     }
   }, [searchParams, services, loading]);
 
-  const fetchServices = async (): Promise<Service[]> => {
-    if (!currentUser) return [];
+  // Estado para reabrir el sheet del servicio después de editar
+  const [pendingReopenServiceId, setPendingReopenServiceId] = useState<string | null>(null);
 
-    try {
-      const servicesQuery = query(
-        collection(db, 'services'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const snapshot = await getDocs(servicesQuery);
-      const servicesData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as Service[];
-
-      setServices(servicesData);
-      return servicesData;
-    } catch (error) {
-      console.error('Error fetching services:', error);
-      return [];
-    } finally {
-      setLoading(false);
+  // Cuando services se actualizan y hay un pendingReopenServiceId, reabrir el sheet
+  useEffect(() => {
+    if (pendingReopenServiceId && services.length > 0) {
+      const updatedService = services.find(s => s.id === pendingReopenServiceId);
+      if (updatedService) {
+        setViewingService(updatedService);
+      }
+      setPendingReopenServiceId(null);
     }
-  };
-
-  const fetchPaymentInstances = async () => {
-    if (!currentUser) return;
-
-    try {
-      const instancesQuery = query(
-        collection(db, 'payment_instances'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const snapshot = await getDocs(instancesQuery);
-      const instancesData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        dueDate: doc.data().dueDate?.toDate() || new Date(),
-        paidDate: doc.data().paidDate?.toDate(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as PaymentInstance[];
-
-      setPaymentInstances(instancesData);
-    } catch (error) {
-      console.error('Error fetching payment instances:', error);
-    }
-  };
+  }, [services, pendingReopenServiceId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,14 +153,11 @@ export function Services() {
 
       const serviceIdToReopen = editingFromView;
       resetForm();
-      const updatedServices = await fetchServices();
+      await refetchServices();
 
-      // Si estábamos editando desde el Sheet, reabrir con el servicio actualizado
+      // Si estábamos editando desde el Sheet, reabrir cuando services se actualicen
       if (serviceIdToReopen) {
-        const updatedService = updatedServices.find(s => s.id === serviceIdToReopen);
-        if (updatedService) {
-          setViewingService(updatedService);
-        }
+        setPendingReopenServiceId(serviceIdToReopen);
       }
     } catch (error) {
       console.error('Error saving service:', error);
@@ -240,7 +197,7 @@ export function Services() {
     try {
       await deleteDoc(doc(db, 'services', serviceId));
       toast.success('Servicio eliminado exitosamente');
-      await fetchServices();
+      await refetchServices();
     } catch (error) {
       console.error('Error deleting service:', error);
       toast.error('Error al eliminar el servicio');
