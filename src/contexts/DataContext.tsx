@@ -3,6 +3,7 @@ import {
   collection,
   query,
   where,
+  orderBy,
   getDocs,
   Timestamp,
   type DocumentData,
@@ -166,6 +167,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         collection(db, 'payment_instances'),
         where('householdId', '==', householdId),
         where('dueDate', '>=', Timestamp.fromDate(startDate)),
+        orderBy('dueDate', 'asc'),
       );
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((doc) => {
