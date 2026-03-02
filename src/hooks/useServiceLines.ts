@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useFirestoreCollection } from './useFirestoreCollection';
+import { useData } from '@/contexts/DataContext';
 import type { ServiceLine } from '@/lib/types';
 
 interface UseServiceLinesOptions {
@@ -9,9 +9,10 @@ interface UseServiceLinesOptions {
 
 export function useServiceLines(options: UseServiceLinesOptions = {}) {
   const { serviceId, activeOnly = true } = options;
+  const { serviceLines: rawServiceLines, loading, errors, refetchServiceLines } = useData();
 
-  const transform = useMemo(() => (data: ServiceLine[]): ServiceLine[] => {
-    let result = data;
+  const serviceLines = useMemo(() => {
+    let result = [...rawServiceLines];
 
     if (serviceId) {
       result = result.filter(line => line.serviceId === serviceId);
@@ -21,16 +22,10 @@ export function useServiceLines(options: UseServiceLinesOptions = {}) {
       result = result.filter(line => line.isActive);
     }
 
-    return result.sort((a, b) => a.name.localeCompare(b.name));
-  }, [serviceId, activeOnly]);
+    return result.sort((a: ServiceLine, b: ServiceLine) => a.name.localeCompare(b.name));
+  }, [rawServiceLines, serviceId, activeOnly]);
 
-  const { data: serviceLines, loading, error, refetch } = useFirestoreCollection<ServiceLine>({
-    collectionName: 'service_lines',
-    transform,
-    errorMessage: 'Error al cargar líneas de servicio'
-  });
-
-  return { serviceLines, loading, error, refetch };
+  return { serviceLines, loading, error: errors.serviceLines ?? null, refetch: refetchServiceLines };
 }
 
 export function useServiceLinesGrouped() {

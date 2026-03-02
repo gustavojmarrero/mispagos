@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
 import { useServices } from '@/hooks/useServices';
 import { useBanks } from '@/hooks/useBanks';
 import { useServiceLines } from '@/hooks/useServiceLines';
@@ -117,14 +118,19 @@ const getNextDueDate = (billingDueDay: number): Date => {
 
 export function Payments() {
   const { currentUser } = useAuth();
+  const {
+    cards,
+    scheduledPayments: contextScheduledPayments,
+    paymentInstances,
+    loading,
+    refetchScheduledPayments,
+  } = useData();
   const { services } = useServices();
   const { banks } = useBanks();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [returnToDashboard, setReturnToDashboard] = useState(false);
   const [payments, setPayments] = useState<ScheduledPayment[]>([]);
-  const [cards, setCards] = useState<CardType[]>([]);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<ScheduledPayment | null>(null);
@@ -152,9 +158,6 @@ export function Payments() {
   // Hook para obtener todas las líneas de servicio (para mostrar sub-filas)
   const { serviceLines: allServiceLines } = useServiceLines({ activeOnly: false });
 
-  // Estado para instancias de pago (para calcular estado del ciclo vigente)
-  const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
-
   const [amountInput, setAmountInput] = useState('');
   const [isEditingAmount, setIsEditingAmount] = useState(false);
   const [duplicatePayment, setDuplicatePayment] = useState<ScheduledPayment | null>(null);
@@ -175,6 +178,11 @@ export function Payments() {
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [methodFilter, setMethodFilter] = useState<string>('all');
 
+  // Sincronizar scheduledPayments del contexto al estado local
+  useEffect(() => {
+    setPayments(contextScheduledPayments);
+  }, [contextScheduledPayments]);
+
   // Calcular paymentDate automáticamente cuando se carga/selecciona una línea de servicio
   useEffect(() => {
     if (formData.frequency === 'billing_cycle' && formData.serviceLineId && selectedServiceLines.length > 0) {
@@ -187,12 +195,6 @@ export function Payments() {
       }
     }
   }, [formData.serviceLineId, selectedServiceLines, formData.frequency]);
-
-  useEffect(() => {
-    fetchPayments();
-    fetchCards();
-    fetchPaymentInstances();
-  }, [currentUser?.householdId]);
 
   // Calcular estado del ciclo vigente para cada línea de servicio
   const lineStatusMap = useMemo(() => {
@@ -281,77 +283,6 @@ export function Payments() {
       }
     }
   }, [searchParams, services, loading]);
-
-  const fetchCards = async () => {
-    if (!currentUser) return;
-
-    try {
-      const cardsQuery = query(
-        collection(db, 'cards'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const snapshot = await getDocs(cardsQuery);
-      const cardsData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as CardType[];
-
-      setCards(cardsData.sort((a, b) => a.name.localeCompare(b.name)));
-    } catch (error) {
-      console.error('Error fetching cards:', error);
-    }
-  };
-
-  const fetchPayments = async () => {
-    if (!currentUser) return;
-
-    try {
-      const paymentsQuery = query(
-        collection(db, 'scheduled_payments'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const snapshot = await getDocs(paymentsQuery);
-      const paymentsData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-        paymentDate: doc.data().paymentDate?.toDate(),
-      })) as ScheduledPayment[];
-
-      setPayments(paymentsData);
-    } catch (error) {
-      console.error('Error fetching payments:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPaymentInstances = async () => {
-    if (!currentUser) return;
-
-    try {
-      const instancesQuery = query(
-        collection(db, 'payment_instances'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const snapshot = await getDocs(instancesQuery);
-      const instancesData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        dueDate: doc.data().dueDate?.toDate() || new Date(),
-        paidDate: doc.data().paidDate?.toDate(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as PaymentInstance[];
-
-      setPaymentInstances(instancesData);
-    } catch (error) {
-      console.error('Error fetching payment instances:', error);
-    }
-  };
 
   // Obtener historial de pagos de un servicio
   const fetchServicePaymentHistory = async (serviceId: string, serviceLineId?: string) => {
@@ -569,7 +500,7 @@ export function Payments() {
         return;
       }
 
-      await fetchPayments();
+      await refetchScheduledPayments();
     } catch (error) {
       console.error('[Payments] Error saving payment:', error);
       toast.error('Error al guardar el pago');
@@ -606,7 +537,7 @@ export function Payments() {
     try {
       await deleteDoc(doc(db, 'scheduled_payments', paymentId));
       toast.success('Pago eliminado exitosamente');
-      await fetchPayments();
+      await refetchScheduledPayments();
     } catch (error) {
       console.error('Error deleting payment:', error);
       toast.error('Error al eliminar el pago');
@@ -620,7 +551,7 @@ export function Payments() {
         updatedAt: serverTimestamp(),
       });
       toast.success(payment.isActive ? 'Pago desactivado' : 'Pago activado');
-      await fetchPayments();
+      await refetchScheduledPayments();
     } catch (error) {
       console.error('Error toggling payment:', error);
       toast.error('Error al cambiar el estado del pago');

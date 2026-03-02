@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useData } from '@/contexts/DataContext';
 import { useServices } from '@/hooks/useServices';
 import { useBanks } from '@/hooks/useBanks';
 import { useServiceLines } from '@/hooks/useServiceLines';
@@ -51,7 +52,6 @@ import type {
   PaymentInstance,
   Card as CardType,
   PartialPayment,
-  ScheduledPayment,
 } from '@/lib/types';
 import {
   Calendar,
@@ -92,13 +92,19 @@ const formatDateForInput = (date: Date): string => {
 
 export function PaymentCalendar() {
   const { currentUser } = useAuth();
+  const {
+    cards,
+    scheduledPayments,
+    paymentInstances: contextInstances,
+    loading: dataLoading,
+    refetchPaymentInstances,
+    refetchCards,
+  } = useData();
   const { services } = useServices();
   const { banks } = useBanks();
   const { serviceLines: allServiceLines } = useServiceLines({ activeOnly: false });
   const [searchParams] = useSearchParams();
   const [instances, setInstances] = useState<PaymentInstance[]>([]);
-  const [cards, setCards] = useState<CardType[]>([]);
-  const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingInstance, setEditingInstance] = useState<PaymentInstance | null>(null);
   const [showAdjustModal, setShowAdjustModal] = useState(false);
@@ -118,16 +124,16 @@ export function PaymentCalendar() {
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
 
-  // Cards y scheduled_payments solo dependen del householdId
+  // Para filtros normales, usar instancias del contexto
+  // Para timeFilter === 'all', se hace fetch independiente (rango de 1 año)
   useEffect(() => {
-    fetchCards();
-    fetchScheduledPayments();
-  }, [currentUser?.householdId]);
-
-  // Instances dependen también de los filtros de fecha
-  useEffect(() => {
-    fetchInstances();
-  }, [currentUser?.householdId, timeFilter, customStartDate, customEndDate]);
+    if (timeFilter === 'all' || (timeFilter === 'custom' && customStartDate)) {
+      fetchInstances();
+    } else {
+      setInstances(contextInstances);
+      setLoading(dataLoading);
+    }
+  }, [timeFilter, customStartDate, customEndDate, contextInstances, dataLoading, currentUser?.householdId]);
 
   // Calcular estado del ciclo vigente para cada línea de servicio
   const lineStatusMap = useMemo(() => {
@@ -172,51 +178,6 @@ export function PaymentCalendar() {
     }
   }, [searchParams, instances, loading]);
 
-  const fetchCards = async () => {
-    if (!currentUser) return;
-
-    try {
-      const cardsQuery = query(
-        collection(db, 'cards'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const snapshot = await getDocs(cardsQuery);
-      const cardsData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as CardType[];
-
-      setCards(cardsData);
-    } catch (error) {
-      console.error('Error fetching cards:', error);
-    }
-  };
-
-  const fetchScheduledPayments = async () => {
-    if (!currentUser) return;
-
-    try {
-      const paymentsQuery = query(
-        collection(db, 'scheduled_payments'),
-        where('householdId', '==', currentUser.householdId)
-      );
-      const snapshot = await getDocs(paymentsQuery);
-      const paymentsData = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-        paymentDate: doc.data().paymentDate?.toDate(),
-      })) as ScheduledPayment[];
-
-      setScheduledPayments(paymentsData);
-    } catch (error) {
-      console.error('Error fetching scheduled payments:', error);
-    }
-  };
-
   /**
    * Actualiza el crédito disponible de una tarjeta cuando se efectúa un pago
    * @param cardId - ID de la tarjeta a actualizar
@@ -260,16 +221,19 @@ export function PaymentCalendar() {
         updatedByName: currentUser.name,
       });
 
-      // Actualizar estado local
-      setCards(prevCards =>
-        prevCards.map(card =>
-          card.id === cardId
-            ? { ...card, availableCredit: newAvailableCredit, currentBalance: newCurrentBalance }
-            : card
-        )
-      );
+      // Refrescar cards del contexto
+      await refetchCards();
     } catch (error) {
       console.error('Error updating card available credit:', error);
+    }
+  };
+
+  // Después de mutaciones, refrescar instancias según el filtro activo
+  const refreshInstances = async () => {
+    if (timeFilter === 'all' || (timeFilter === 'custom' && customStartDate)) {
+      await fetchInstances();
+    } else {
+      await refetchPaymentInstances();
     }
   };
 
@@ -585,7 +549,7 @@ export function PaymentCalendar() {
       }
 
       toast.success('Pago marcado como realizado');
-      await fetchInstances();
+      await refreshInstances();
     } catch (error) {
       console.error('Error marking as paid:', error);
       toast.error('Error al marcar como pagado');
@@ -605,7 +569,7 @@ export function PaymentCalendar() {
       });
 
       toast.success('Pago cancelado');
-      await fetchInstances();
+      await refreshInstances();
     } catch (error) {
       console.error('Error cancelling payment:', error);
       toast.error('Error al cancelar el pago');
@@ -660,7 +624,7 @@ export function PaymentCalendar() {
         await updateCardAvailableCredit(instance.cardId, amountToRevert, 'subtract');
       }
 
-      await fetchInstances();
+      await refreshInstances();
     } catch (error) {
       console.error('Error unmarking as paid:', error);
       toast.error('Error al desmarcar como pagado');
@@ -739,7 +703,7 @@ export function PaymentCalendar() {
       }
       setShowAdjustModal(false);
       setEditingInstance(null);
-      await fetchInstances();
+      await refreshInstances();
     } catch (error) {
       console.error('Error adjusting amount:', error);
       toast.error('Error al ajustar el monto');
@@ -815,7 +779,7 @@ export function PaymentCalendar() {
       setEditingInstance(null);
       setPartialAmount('');
       setPartialNotes('');
-      await fetchInstances();
+      await refreshInstances();
     } catch (error) {
       console.error('Error saving partial payment:', error);
       toast.error('Error al registrar el pago parcial');
@@ -871,7 +835,7 @@ export function PaymentCalendar() {
       }
 
       toast.success('Pago parcial eliminado');
-      await fetchInstances();
+      await refreshInstances();
     } catch (error: any) {
       console.error('Error deleting partial payment:', error);
 
@@ -897,7 +861,7 @@ export function PaymentCalendar() {
           }
 
           toast.success('Pagos parciales limpiados (formato antiguo incompatible)');
-          await fetchInstances();
+          await refreshInstances();
           return;
         } catch (cleanupError) {
           console.error('Error cleaning up partial payments:', cleanupError);
