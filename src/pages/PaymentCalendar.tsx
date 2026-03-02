@@ -104,8 +104,9 @@ export function PaymentCalendar() {
   const { banks } = useBanks();
   const { serviceLines: allServiceLines } = useServiceLines({ activeOnly: false });
   const [searchParams] = useSearchParams();
-  const [instances, setInstances] = useState<PaymentInstance[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Estado local solo para fetch independiente (timeFilter === 'all' o custom)
+  const [localInstances, setLocalInstances] = useState<PaymentInstance[]>([]);
+  const [localLoading, setLocalLoading] = useState(false);
   const [editingInstance, setEditingInstance] = useState<PaymentInstance | null>(null);
   const [showAdjustModal, setShowAdjustModal] = useState(false);
   const [adjustAmount, setAdjustAmount] = useState('');
@@ -124,16 +125,19 @@ export function PaymentCalendar() {
   const [customStartDate, setCustomStartDate] = useState<Date | null>(null);
   const [customEndDate, setCustomEndDate] = useState<Date | null>(null);
 
-  // Para filtros normales, usar instancias del contexto
-  // Para timeFilter === 'all', se hace fetch independiente (rango de 1 año)
+  // Determinar si necesitamos fetch independiente (rango extendido)
+  const needsLocalFetch = timeFilter === 'all' || (timeFilter === 'custom' && !!customStartDate);
+
+  // Variables derivadas: elegir entre datos locales o del contexto
+  const instances = needsLocalFetch ? localInstances : contextInstances;
+  const loading = needsLocalFetch ? localLoading : dataLoading;
+
+  // Solo hacer fetch independiente cuando el filtro lo requiere
   useEffect(() => {
-    if (timeFilter === 'all' || (timeFilter === 'custom' && customStartDate)) {
+    if (needsLocalFetch) {
       fetchInstances();
-    } else {
-      setInstances(contextInstances);
-      setLoading(dataLoading);
     }
-  }, [timeFilter, customStartDate, customEndDate, contextInstances, dataLoading, currentUser?.householdId]);
+  }, [needsLocalFetch, customStartDate, customEndDate, currentUser?.householdId]);
 
   // Calcular estado del ciclo vigente para cada línea de servicio
   const lineStatusMap = useMemo(() => {
@@ -239,7 +243,7 @@ export function PaymentCalendar() {
 
   const fetchInstances = async () => {
     if (!currentUser) return;
-
+    setLocalLoading(true);
     try {
       const now = new Date();
       let queryStartDate: Date;
@@ -290,11 +294,11 @@ export function PaymentCalendar() {
       // Ordenar por fecha
       instancesData.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
 
-      setInstances(instancesData);
+      setLocalInstances(instancesData);
     } catch (error) {
       console.error('Error fetching instances:', error);
     } finally {
-      setLoading(false);
+      setLocalLoading(false);
     }
   };
 

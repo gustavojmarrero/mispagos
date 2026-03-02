@@ -120,7 +120,7 @@ export function Payments() {
   const { currentUser } = useAuth();
   const {
     cards,
-    scheduledPayments: contextScheduledPayments,
+    scheduledPayments: payments,
     paymentInstances,
     loading,
     refetchScheduledPayments,
@@ -130,7 +130,6 @@ export function Payments() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [returnToDashboard, setReturnToDashboard] = useState(false);
-  const [payments, setPayments] = useState<ScheduledPayment[]>([]);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingPayment, setEditingPayment] = useState<ScheduledPayment | null>(null);
@@ -177,11 +176,6 @@ export function Payments() {
   const [bankFilter, setBankFilter] = useState<string>('all');
   const [ownerFilter, setOwnerFilter] = useState<string>('all');
   const [methodFilter, setMethodFilter] = useState<string>('all');
-
-  // Sincronizar scheduledPayments del contexto al estado local
-  useEffect(() => {
-    setPayments(contextScheduledPayments);
-  }, [contextScheduledPayments]);
 
   // Calcular paymentDate automáticamente cuando se carga/selecciona una línea de servicio
   useEffect(() => {

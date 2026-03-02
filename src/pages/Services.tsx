@@ -43,13 +43,12 @@ import {
 export function Services() {
   const { currentUser } = useAuth();
   const {
-    services: contextServices,
+    services,
     paymentInstances,
     loading,
     refetchServices,
   } = useData();
   const [searchParams] = useSearchParams();
-  const [services, setServices] = useState<Service[]>([]);
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -69,11 +68,6 @@ export function Services() {
 
   // Hook para obtener líneas de servicio agrupadas
   const { linesCountByService, refetch: refetchServiceLines } = useServiceLinesGrouped();
-
-  // Sincronizar services del contexto al estado local
-  useEffect(() => {
-    setServices(contextServices);
-  }, [contextServices]);
 
   // Abrir panel de servicio automáticamente si viene viewService en la URL (desde alertas del Dashboard)
   useEffect(() => {

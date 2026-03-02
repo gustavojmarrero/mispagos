@@ -31,22 +31,16 @@ export function useServiceLines(options: UseServiceLinesOptions = {}) {
 export function useServiceLinesGrouped() {
   const { serviceLines, loading, error, refetch } = useServiceLines({ activeOnly: false });
 
-  const groupedByService = useMemo(() => {
-    return serviceLines.reduce((acc, line) => {
-      if (!acc[line.serviceId]) {
-        acc[line.serviceId] = [];
-      }
-      acc[line.serviceId].push(line);
-      return acc;
-    }, {} as Record<string, ServiceLine[]>);
+  const { groupedByService, linesCountByService } = useMemo(() => {
+    const grouped: Record<string, ServiceLine[]> = {};
+    const counts: Record<string, number> = {};
+    for (const line of serviceLines) {
+      if (!grouped[line.serviceId]) { grouped[line.serviceId] = []; counts[line.serviceId] = 0; }
+      grouped[line.serviceId].push(line);
+      if (line.isActive) counts[line.serviceId]++;
+    }
+    return { groupedByService: grouped, linesCountByService: counts };
   }, [serviceLines]);
-
-  const linesCountByService = useMemo(() => {
-    return Object.entries(groupedByService).reduce((acc, [serviceId, lines]) => {
-      acc[serviceId] = lines.filter(l => l.isActive).length;
-      return acc;
-    }, {} as Record<string, number>);
-  }, [groupedByService]);
 
   return {
     serviceLines,

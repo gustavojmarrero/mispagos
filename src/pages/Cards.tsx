@@ -64,8 +64,7 @@ import { formatCurrency } from '@/lib/utils';
 export function Cards() {
   const { currentUser } = useAuth();
   const { banks } = useBanks();
-  const { cards: contextCards, loading, refetchCards } = useData();
-  const [cards, setCards] = useState<CardType[]>([]);
+  const { cards, loading, refetchCards } = useData();
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCard, setEditingCard] = useState<CardType | null>(null);
@@ -126,11 +125,6 @@ export function Cards() {
   const [editingPayment, setEditingPayment] = useState<PaymentInstance | null>(null);
   const [partialAmount, setPartialAmount] = useState('');
   const [partialNotes, setPartialNotes] = useState('');
-
-  // Sincronizar cards del contexto al estado local
-  useEffect(() => {
-    setCards(contextCards);
-  }, [contextCards]);
 
   // Calcular automáticamente el saldo actual
   useEffect(() => {
@@ -200,14 +194,8 @@ export function Cards() {
         updatedByName: currentUser.name,
       });
 
-      // Actualizar estado local
-      setCards(prevCards =>
-        prevCards.map(card =>
-          card.id === cardId
-            ? { ...card, availableCredit: newAvailableCredit, currentBalance: newCurrentBalance }
-            : card
-        )
-      );
+      // Refrescar cards del contexto
+      await refetchCards();
 
       // Actualizar viewingCard si es la misma tarjeta
       if (viewingCard?.id === cardId) {

@@ -1,10 +1,13 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   collection,
   query,
   where,
   getDocs,
   Timestamp,
+  type DocumentData,
+  type QueryConstraint,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,6 +20,8 @@ import type {
   PaymentInstance,
 } from '@/lib/types';
 
+type DataErrorKey = 'cards' | 'banks' | 'services' | 'serviceLines' | 'scheduledPayments' | 'paymentInstances';
+
 interface DataContextType {
   cards: Card[];
   banks: Bank[];
@@ -25,7 +30,7 @@ interface DataContextType {
   scheduledPayments: ScheduledPayment[];
   paymentInstances: PaymentInstance[];
   loading: boolean;
-  errors: Record<string, string | null>;
+  errors: Record<DataErrorKey, string | null>;
   refetchCards: () => Promise<void>;
   refetchBanks: () => Promise<void>;
   refetchServices: () => Promise<void>;
@@ -45,6 +50,26 @@ export function useData() {
   return context;
 }
 
+// Mapeo base de documento Firestore a entidad con campos de metadata
+function mapDoc<T>(doc: QueryDocumentSnapshot<DocumentData>): T {
+  const d = doc.data();
+  return {
+    ...d,
+    id: doc.id,
+    createdAt: d.createdAt?.toDate() || new Date(),
+    updatedAt: d.updatedAt?.toDate() || new Date(),
+  } as T;
+}
+
+const INITIAL_ERRORS: Record<DataErrorKey, string | null> = {
+  cards: null,
+  banks: null,
+  services: null,
+  serviceLines: null,
+  scheduledPayments: null,
+  paymentInstances: null,
+};
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuth();
   const householdId = currentUser?.householdId ?? null;
@@ -56,111 +81,78 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
   const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [loading, setLoading] = useState(true);
-  const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [errors, setErrors] = useState<Record<DataErrorKey, string | null>>(INITIAL_ERRORS);
 
-  const setError = useCallback((key: string, error: string | null) => {
-    setErrors(prev => ({ ...prev, [key]: error }));
-  }, []);
+  // Helper generico para fetch de colecciones simples
+  async function fetchCollection<T>(
+    hId: string,
+    collectionName: string,
+    setter: (data: T[]) => void,
+    errorKey: DataErrorKey,
+    errorLabel: string,
+    mapFn: (doc: QueryDocumentSnapshot<DocumentData>) => T = mapDoc,
+    extraConstraints?: QueryConstraint[],
+  ) {
+    try {
+      const constraints: QueryConstraint[] = [
+        where('householdId', '==', hId),
+        ...(extraConstraints ?? []),
+      ];
+      const q = query(collection(db, collectionName), ...constraints);
+      const snapshot = await getDocs(q);
+      setter(snapshot.docs.map(mapFn));
+      setErrors(prev => prev[errorKey] === null ? prev : { ...prev, [errorKey]: null });
+    } catch (err) {
+      console.error(`Error fetching ${collectionName}:`, err);
+      setErrors(prev => ({ ...prev, [errorKey]: `Error al cargar ${errorLabel}` }));
+    }
+  }
 
   const fetchCards = useCallback(async () => {
     if (!householdId) return;
-    try {
-      const q = query(collection(db, 'cards'), where('householdId', '==', householdId));
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((doc) => ({
-        ...doc.data(),
+    await fetchCollection<Card>(householdId, 'cards', setCards, 'cards', 'tarjetas', (doc) => {
+      const d = doc.data();
+      return {
+        ...d,
         id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-        cardType: doc.data().cardType || 'Departamental',
-        owner: doc.data().owner || 'Gustavo',
-        bankId: doc.data().bankId || '',
-        availableCredit: doc.data().availableCredit || 0,
-      })) as Card[];
-      setCards(data);
-      setError('cards', null);
-    } catch (err) {
-      console.error('Error fetching cards:', err);
-      setError('cards', 'Error al cargar tarjetas');
-    }
-  }, [householdId, setError]);
+        createdAt: d.createdAt?.toDate() || new Date(),
+        updatedAt: d.updatedAt?.toDate() || new Date(),
+        cardType: d.cardType || 'Departamental',
+        owner: d.owner || 'Gustavo',
+        bankId: d.bankId || '',
+        availableCredit: d.availableCredit || 0,
+      } as Card;
+    });
+  }, [householdId]);
 
   const fetchBanks = useCallback(async () => {
     if (!householdId) return;
-    try {
-      const q = query(collection(db, 'banks'), where('householdId', '==', householdId));
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as Bank[];
-      setBanks(data);
-      setError('banks', null);
-    } catch (err) {
-      console.error('Error fetching banks:', err);
-      setError('banks', 'Error al cargar bancos');
-    }
-  }, [householdId, setError]);
+    await fetchCollection<Bank>(householdId, 'banks', setBanks, 'banks', 'bancos');
+  }, [householdId]);
 
   const fetchServices = useCallback(async () => {
     if (!householdId) return;
-    try {
-      const q = query(collection(db, 'services'), where('householdId', '==', householdId));
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as Service[];
-      setServices(data);
-      setError('services', null);
-    } catch (err) {
-      console.error('Error fetching services:', err);
-      setError('services', 'Error al cargar servicios');
-    }
-  }, [householdId, setError]);
+    await fetchCollection<Service>(householdId, 'services', setServices, 'services', 'servicios');
+  }, [householdId]);
 
   const fetchServiceLines = useCallback(async () => {
     if (!householdId) return;
-    try {
-      const q = query(collection(db, 'service_lines'), where('householdId', '==', householdId));
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as ServiceLine[];
-      setServiceLines(data);
-      setError('serviceLines', null);
-    } catch (err) {
-      console.error('Error fetching service lines:', err);
-      setError('serviceLines', 'Error al cargar lineas de servicio');
-    }
-  }, [householdId, setError]);
+    await fetchCollection<ServiceLine>(householdId, 'service_lines', setServiceLines, 'serviceLines', 'lineas de servicio');
+  }, [householdId]);
 
   const fetchScheduledPayments = useCallback(async () => {
     if (!householdId) return;
-    try {
-      const q = query(collection(db, 'scheduled_payments'), where('householdId', '==', householdId));
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((doc) => ({
-        ...doc.data(),
+    await fetchCollection<ScheduledPayment>(householdId, 'scheduled_payments', setScheduledPayments, 'scheduledPayments', 'pagos programados', (doc) => {
+      const d = doc.data();
+      return {
+        ...d,
         id: doc.id,
-        paymentDate: doc.data().paymentDate?.toDate(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as ScheduledPayment[];
-      setScheduledPayments(data);
-      setError('scheduledPayments', null);
-    } catch (err) {
-      console.error('Error fetching scheduled payments:', err);
-      setError('scheduledPayments', 'Error al cargar pagos programados');
-    }
-  }, [householdId, setError]);
+        paymentDate: d.paymentDate?.toDate(),
+        createdAt: d.createdAt?.toDate() || new Date(),
+        updatedAt: d.updatedAt?.toDate() || new Date(),
+      } as ScheduledPayment;
+    });
+  }, [householdId]);
 
   const fetchPaymentInstances = useCallback(async () => {
     if (!householdId) return;
@@ -176,65 +168,52 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         where('dueDate', '>=', Timestamp.fromDate(startDate)),
       );
       const snapshot = await getDocs(q);
-      let data = snapshot.docs.map((doc) => ({
-        ...doc.data(),
-        id: doc.id,
-        dueDate: doc.data().dueDate?.toDate() || new Date(),
-        paidDate: doc.data().paidDate?.toDate(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        updatedAt: doc.data().updatedAt?.toDate() || new Date(),
-      })) as PaymentInstance[];
+      const data = snapshot.docs.map((doc) => {
+        const d = doc.data();
+        return {
+          ...d,
+          id: doc.id,
+          dueDate: d.dueDate?.toDate() || new Date(),
+          paidDate: d.paidDate?.toDate(),
+          createdAt: d.createdAt?.toDate() || new Date(),
+          updatedAt: d.updatedAt?.toDate() || new Date(),
+        } as PaymentInstance;
+      });
 
       // Filtrar rango superior en cliente
-      data = data.filter(instance => instance.dueDate <= endDate);
-
-      setPaymentInstances(data);
-      setError('paymentInstances', null);
+      setPaymentInstances(data.filter(instance => instance.dueDate <= endDate));
+      setErrors(prev => prev.paymentInstances === null ? prev : { ...prev, paymentInstances: null });
     } catch (err) {
       console.error('Error fetching payment instances:', err);
-      setError('paymentInstances', 'Error al cargar instancias de pago');
+      setErrors(prev => ({ ...prev, paymentInstances: 'Error al cargar instancias de pago' }));
     }
-  }, [householdId, setError]);
+  }, [householdId]);
 
   const refetchAll = useCallback(async () => {
     if (!householdId) return;
     await Promise.allSettled([
-      fetchCards(),
-      fetchBanks(),
-      fetchServices(),
-      fetchServiceLines(),
-      fetchScheduledPayments(),
-      fetchPaymentInstances(),
+      fetchCards(), fetchBanks(), fetchServices(),
+      fetchServiceLines(), fetchScheduledPayments(), fetchPaymentInstances(),
     ]);
   }, [householdId, fetchCards, fetchBanks, fetchServices, fetchServiceLines, fetchScheduledPayments, fetchPaymentInstances]);
 
-  // Fetch inicial cuando householdId esta disponible
+  // Ref para evitar listar los 6 callbacks en el dep-array del efecto.
+  // householdId es la unica dependencia real; los callbacks son estables mientras no cambie.
+  const refetchAllRef = useRef(refetchAll);
+  refetchAllRef.current = refetchAll;
+
   useEffect(() => {
     if (!householdId) {
       setLoading(false);
       return;
     }
-
     setLoading(true);
-    Promise.allSettled([
-      fetchCards(),
-      fetchBanks(),
-      fetchServices(),
-      fetchServiceLines(),
-      fetchScheduledPayments(),
-      fetchPaymentInstances(),
-    ]).finally(() => setLoading(false));
-  }, [householdId, fetchCards, fetchBanks, fetchServices, fetchServiceLines, fetchScheduledPayments, fetchPaymentInstances]);
+    refetchAllRef.current().finally(() => setLoading(false));
+  }, [householdId]);
 
   const value: DataContextType = useMemo(() => ({
-    cards,
-    banks,
-    services,
-    serviceLines,
-    scheduledPayments,
-    paymentInstances,
-    loading,
-    errors,
+    cards, banks, services, serviceLines, scheduledPayments, paymentInstances,
+    loading, errors,
     refetchCards: fetchCards,
     refetchBanks: fetchBanks,
     refetchServices: fetchServices,
