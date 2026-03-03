@@ -167,6 +167,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         collection(db, 'payment_instances'),
         where('householdId', '==', householdId),
         where('dueDate', '>=', Timestamp.fromDate(startDate)),
+        where('dueDate', '<=', Timestamp.fromDate(endDate)),
         orderBy('dueDate', 'asc'),
       );
       const snapshot = await getDocs(q);
@@ -182,8 +183,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         } as PaymentInstance;
       });
 
-      // Filtrar rango superior en cliente
-      setPaymentInstances(data.filter(instance => instance.dueDate <= endDate));
+      setPaymentInstances(data);
       setErrors(prev => prev.paymentInstances === null ? prev : { ...prev, paymentInstances: null });
     } catch (err) {
       console.error('Error fetching payment instances:', err);

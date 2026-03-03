@@ -2,12 +2,14 @@ import {
   collection,
   query,
   where,
+  orderBy,
   getDocs,
   addDoc,
   updateDoc,
   doc,
   serverTimestamp,
   Timestamp,
+  type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from './firebase';
 import type {
@@ -477,10 +479,12 @@ export async function generateCurrentAndNextMonthInstances(
     allInstances = [...currentMonthInstances, ...nextMonthInstances];
   }
 
-  // Siempre revalidar contra Firestore para evitar duplicados en households compartidos
+  // Revalidar contra Firestore para evitar duplicados, acotado al rango mes actual → fin mes siguiente
   const existingInstances = await getExistingInstances(
     scheduledPayment.householdId,
-    scheduledPayment.id
+    scheduledPayment.id,
+    currentMonth.start,
+    nextMonth.end
   );
 
   // Filtrar las que no existen
@@ -517,13 +521,24 @@ export async function generateCurrentAndNextMonthInstances(
  */
 async function getExistingInstances(
   householdId: string,
-  scheduledPaymentId: string
+  scheduledPaymentId: string,
+  startDate?: Date,
+  endDate?: Date
 ): Promise<PaymentInstance[]> {
-  const q = query(
-    collection(db, 'payment_instances'),
+  const constraints: QueryConstraint[] = [
     where('householdId', '==', householdId),
-    where('scheduledPaymentId', '==', scheduledPaymentId)
-  );
+    where('scheduledPaymentId', '==', scheduledPaymentId),
+  ];
+
+  if (startDate && endDate) {
+    constraints.push(
+      where('dueDate', '>=', Timestamp.fromDate(startDate)),
+      where('dueDate', '<=', Timestamp.fromDate(endDate)),
+      orderBy('dueDate', 'asc')
+    );
+  }
+
+  const q = query(collection(db, 'payment_instances'), ...constraints);
 
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({
