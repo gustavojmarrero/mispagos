@@ -43,25 +43,29 @@ export function Dashboard() {
   serviceLinesRef.current = serviceLines;
   const paymentInstancesRef = useRef(paymentInstances);
   paymentInstancesRef.current = paymentInstances;
+  const scheduledPaymentsRef = useRef(scheduledPayments);
+  scheduledPaymentsRef.current = scheduledPayments;
+  const appendPaymentInstancesRef = useRef(appendPaymentInstances);
+  appendPaymentInstancesRef.current = appendPaymentInstances;
 
   // Trigger: generar instancias faltantes del mes actual y siguiente
   useEffect(() => {
     if (!householdId || loading || instancesGeneratedRef.current || isGeneratingRef.current) return;
-    if (scheduledPayments.length === 0) return;
+    if (scheduledPaymentsRef.current.length === 0) return;
 
     const generateMissingInstances = async () => {
       isGeneratingRef.current = true;
       try {
         const newInstances = await ensureMonthlyInstances(
           householdId,
-          scheduledPayments,
+          scheduledPaymentsRef.current,
           servicesRef.current,
           serviceLinesRef.current,
           paymentInstancesRef.current
         );
         instancesGeneratedRef.current = true;
         if (newInstances.length > 0) {
-          appendPaymentInstances(newInstances);
+          appendPaymentInstancesRef.current(newInstances);
         }
       } catch (error: unknown) {
         const firebaseError = error as { message?: string; code?: string };
@@ -72,7 +76,7 @@ export function Dashboard() {
     };
 
     generateMissingInstances();
-  }, [householdId, loading, scheduledPayments, appendPaymentInstances]);
+  }, [householdId, loading]);
 
   // Rango de fechas fijo: mes actual
   const dateRange = useMemo(() => {

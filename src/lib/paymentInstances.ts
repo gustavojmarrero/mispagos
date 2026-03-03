@@ -497,30 +497,33 @@ export async function generateCurrentAndNextMonthInstances(
       )
   );
 
-  // Guardar en Firestore y retornar instancias creadas con ID
-  const created: PaymentInstance[] = [];
-  for (const instance of instancesToCreate) {
-    try {
-      const dataToSave = {
-        ...instance,
-        dueDate: Timestamp.fromDate(instance.dueDate),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
+  // Guardar en Firestore en paralelo y retornar instancias creadas con ID
+  // Nota: createdAt/updatedAt usan Date del cliente (aproximado) ya que serverTimestamp()
+  // no se resuelve hasta que Firestore lo procesa. Valores exactos se obtienen en el próximo refetch.
+  const created = await Promise.all(
+    instancesToCreate.map(async (instance) => {
+      try {
+        const dataToSave = {
+          ...instance,
+          dueDate: Timestamp.fromDate(instance.dueDate),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
 
-      const docRef = await addDoc(collection(db, 'payment_instances'), dataToSave);
-      created.push({
-        ...instance,
-        id: docRef.id,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      });
-    } catch (error) {
-      console.error('[PaymentInstances] ❌ Error guardando instancia:', error);
-      console.error('[PaymentInstances] Datos que causaron el error:', instance);
-      throw error;
-    }
-  }
+        const docRef = await addDoc(collection(db, 'payment_instances'), dataToSave);
+        return {
+          ...instance,
+          id: docRef.id,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      } catch (error) {
+        console.error('[PaymentInstances] ❌ Error guardando instancia:', error);
+        console.error('[PaymentInstances] Datos que causaron el error:', instance);
+        throw error;
+      }
+    })
+  );
   return created;
 }
 
