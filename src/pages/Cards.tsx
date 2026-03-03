@@ -165,6 +165,8 @@ export function Cards() {
     if (!currentUser) return;
 
     try {
+      // Leer el documento más reciente de Firestore para evitar lost updates
+      // (otro usuario del hogar pudo haber modificado el saldo)
       const cardRef = doc(db, 'cards', cardId);
       const cardDoc = await getDoc(cardRef);
 
