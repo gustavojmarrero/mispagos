@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, Timestamp, type QueryConstraint } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useData } from '@/contexts/DataContext';
@@ -57,9 +57,36 @@ export function Reports() {
     }
     const fetchExtended = async () => {
       try {
+        // Acotar query con filtro de fecha según el preset
+        const constraints: QueryConstraint[] = [
+          where('householdId', '==', currentUser.householdId),
+        ];
+
+        if (dateRange.preset === 'last-6-months') {
+          const sixMonthsAgo = new Date();
+          sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6, 1);
+          sixMonthsAgo.setHours(0, 0, 0, 0);
+          constraints.push(
+            where('dueDate', '>=', Timestamp.fromDate(sixMonthsAgo)),
+            orderBy('dueDate', 'asc')
+          );
+        } else if (dateRange.from) {
+          // Para 'all' u otros rangos custom con fecha de inicio
+          constraints.push(
+            where('dueDate', '>=', Timestamp.fromDate(dateRange.from)),
+            orderBy('dueDate', 'asc')
+          );
+        }
+
+        if (dateRange.to) {
+          constraints.push(
+            where('dueDate', '<=', Timestamp.fromDate(dateRange.to))
+          );
+        }
+
         const q = query(
           collection(db, 'payment_instances'),
-          where('householdId', '==', currentUser.householdId),
+          ...constraints,
         );
         const snapshot = await getDocs(q);
         setLocalInstances(snapshot.docs.map((doc) => {
@@ -78,7 +105,7 @@ export function Reports() {
       }
     };
     fetchExtended();
-  }, [needsExtendedFetch, currentUser]);
+  }, [needsExtendedFetch, currentUser?.householdId, dateRange]);
 
   const instances = needsExtendedFetch ? localInstances : contextInstances;
 
