@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import {
   collection,
   addDoc,
@@ -6,13 +6,10 @@ import {
   deleteDoc,
   doc,
   serverTimestamp,
-  query,
-  where,
-  getDocs,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import type { ScheduledPayment } from '@/lib/types';
+import { useData } from '@/contexts/DataContext';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +44,7 @@ interface ServiceLineListProps {
 
 export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps) {
   const { currentUser } = useAuth();
+  const { scheduledPayments: allScheduledPayments } = useData();
   const { serviceLines, loading, refetch } = useServiceLines({
     serviceId: service.id,
     activeOnly: false, // Mostrar todas, activas e inactivas
@@ -54,33 +52,12 @@ export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps
 
   const [showForm, setShowForm] = useState(false);
   const [editingLine, setEditingLine] = useState<ServiceLine | null>(null);
-  const [scheduledPayments, setScheduledPayments] = useState<ScheduledPayment[]>([]);
 
-  // Cargar pagos programados del servicio
-  useEffect(() => {
-    const fetchScheduledPayments = async () => {
-      if (!currentUser || !service.id) return;
-
-      try {
-        const paymentsQuery = query(
-          collection(db, 'scheduled_payments'),
-          where('householdId', '==', currentUser.householdId),
-          where('serviceId', '==', service.id),
-          where('isActive', '==', true)
-        );
-        const snapshot = await getDocs(paymentsQuery);
-        const payments = snapshot.docs.map((doc) => ({
-          ...doc.data(),
-          id: doc.id,
-        })) as ScheduledPayment[];
-        setScheduledPayments(payments);
-      } catch (error) {
-        console.error('Error fetching scheduled payments:', error);
-      }
-    };
-
-    fetchScheduledPayments();
-  }, [currentUser?.householdId, service.id]);
+  // Filtrar pagos programados del servicio en memoria
+  const scheduledPayments = useMemo(
+    () => allScheduledPayments.filter(sp => sp.serviceId === service.id && sp.isActive),
+    [allScheduledPayments, service.id]
+  );
 
   // Verificar si una línea tiene pago programado
   const hasScheduledPayment = (lineId: string): boolean => {

@@ -39,6 +39,7 @@ interface DataContextType {
   refetchScheduledPayments: () => Promise<void>;
   refetchPaymentInstances: () => Promise<void>;
   refetchAll: () => Promise<void>;
+  appendPaymentInstances: (newInstances: PaymentInstance[]) => void;
 }
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
@@ -191,6 +192,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     }
   }, [householdId]);
 
+  const appendPaymentInstances = useCallback((newInstances: PaymentInstance[]) => {
+    setPaymentInstances(prev => {
+      const existingIds = new Set(prev.map(i => i.id));
+      const unique = newInstances.filter(i => !existingIds.has(i.id));
+      if (unique.length === 0) return prev;
+      return [...prev, ...unique].sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+    });
+  }, []);
+
   const refetchAll = useCallback(async () => {
     if (!householdId) return;
     await Promise.allSettled([
@@ -223,10 +233,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     refetchScheduledPayments: fetchScheduledPayments,
     refetchPaymentInstances: fetchPaymentInstances,
     refetchAll,
+    appendPaymentInstances,
   }), [
     cards, banks, services, serviceLines, scheduledPayments, paymentInstances,
     loading, errors,
-    fetchCards, fetchBanks, fetchServices, fetchServiceLines, fetchScheduledPayments, fetchPaymentInstances, refetchAll,
+    fetchCards, fetchBanks, fetchServices, fetchServiceLines, fetchScheduledPayments, fetchPaymentInstances, refetchAll, appendPaymentInstances,
   ]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

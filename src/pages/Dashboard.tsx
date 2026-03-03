@@ -28,7 +28,7 @@ export function Dashboard() {
     paymentInstances,
     scheduledPayments,
     loading,
-    refetchPaymentInstances,
+    appendPaymentInstances,
   } = useData();
   const { services } = useServices();
   const { banks } = useBanks();
@@ -52,7 +52,7 @@ export function Dashboard() {
     const generateMissingInstances = async () => {
       isGeneratingRef.current = true;
       try {
-        await ensureMonthlyInstances(
+        const newInstances = await ensureMonthlyInstances(
           householdId,
           scheduledPayments,
           servicesRef.current,
@@ -60,8 +60,9 @@ export function Dashboard() {
           paymentInstancesRef.current
         );
         instancesGeneratedRef.current = true;
-        // Refetch para obtener instancias recién creadas
-        await refetchPaymentInstances();
+        if (newInstances.length > 0) {
+          appendPaymentInstances(newInstances);
+        }
       } catch (error: unknown) {
         const firebaseError = error as { message?: string; code?: string };
         console.error('[Dashboard] Error generando instancias:', firebaseError.code, firebaseError.message);
@@ -71,7 +72,7 @@ export function Dashboard() {
     };
 
     generateMissingInstances();
-  }, [householdId, loading, scheduledPayments, refetchPaymentInstances]);
+  }, [householdId, loading, scheduledPayments, appendPaymentInstances]);
 
   // Rango de fechas fijo: mes actual
   const dateRange = useMemo(() => {

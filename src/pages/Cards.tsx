@@ -10,7 +10,6 @@ import {
   doc,
   serverTimestamp,
   arrayUnion,
-  getDoc,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useData } from '@/contexts/DataContext';
@@ -165,17 +164,14 @@ export function Cards() {
     if (!currentUser) return;
 
     try {
-      const cardRef = doc(db, 'cards', cardId);
-      const cardDoc = await getDoc(cardRef);
-
-      if (!cardDoc.exists()) {
+      const card = cards.find(c => c.id === cardId);
+      if (!card) {
         console.error('Card not found:', cardId);
         return;
       }
 
-      const cardData = cardDoc.data();
-      const currentAvailable = cardData.availableCredit || 0;
-      const creditLimit = cardData.creditLimit || 0;
+      const currentAvailable = card.availableCredit || 0;
+      const creditLimit = card.creditLimit || 0;
 
       // Calcular nuevo disponible
       const newAvailableCredit = operation === 'add'
@@ -186,7 +182,7 @@ export function Cards() {
       const newCurrentBalance = creditLimit - newAvailableCredit;
 
       // Actualizar en Firestore
-      await updateDoc(cardRef, {
+      await updateDoc(doc(db, 'cards', cardId), {
         availableCredit: newAvailableCredit,
         currentBalance: newCurrentBalance,
         updatedAt: serverTimestamp(),

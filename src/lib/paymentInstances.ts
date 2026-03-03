@@ -429,8 +429,8 @@ export async function generateCurrentAndNextMonthInstances(
   scheduledPayment: ScheduledPayment,
   service?: Service,
   serviceLine?: ServiceLine
-): Promise<void> {
-  if (!scheduledPayment.isActive) return;
+): Promise<PaymentInstance[]> {
+  if (!scheduledPayment.isActive) return [];
 
   const currentMonth = getCurrentMonthRange();
   const nextMonth = getNextMonthRange();
@@ -497,7 +497,8 @@ export async function generateCurrentAndNextMonthInstances(
       )
   );
 
-  // Guardar en Firestore
+  // Guardar en Firestore y retornar instancias creadas con ID
+  const created: PaymentInstance[] = [];
   for (const instance of instancesToCreate) {
     try {
       const dataToSave = {
@@ -507,13 +508,20 @@ export async function generateCurrentAndNextMonthInstances(
         updatedAt: serverTimestamp(),
       };
 
-      await addDoc(collection(db, 'payment_instances'), dataToSave);
+      const docRef = await addDoc(collection(db, 'payment_instances'), dataToSave);
+      created.push({
+        ...instance,
+        id: docRef.id,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
     } catch (error) {
       console.error('[PaymentInstances] ❌ Error guardando instancia:', error);
       console.error('[PaymentInstances] Datos que causaron el error:', instance);
       throw error;
     }
   }
+  return created;
 }
 
 /**
@@ -565,9 +573,10 @@ export async function ensureMonthlyInstances(
   services?: Service[],
   serviceLines?: ServiceLine[],
   existingInstances?: PaymentInstance[]
-): Promise<void> {
+): Promise<PaymentInstance[]> {
   const currentMonth = getCurrentMonthRange();
   const nextMonth = getNextMonthRange();
+  const allCreated: PaymentInstance[] = [];
 
   for (const scheduledPayment of scheduledPayments) {
     if (!scheduledPayment.isActive) continue;
@@ -631,9 +640,12 @@ export async function ensureMonthlyInstances(
         ? serviceLines?.find(sl => sl.id === scheduledPayment.serviceLineId)
         : undefined;
 
-      await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine);
+      const created = await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine);
+      allCreated.push(...created);
     }
   }
+
+  return allCreated;
 }
 
 /**
