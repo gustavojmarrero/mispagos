@@ -4,10 +4,10 @@ import {
   collection,
   query,
   where,
+  orderBy,
   getDocs,
   updateDoc,
   doc,
-  getDoc,
   serverTimestamp,
   Timestamp,
   arrayUnion,
@@ -196,17 +196,15 @@ export function PaymentCalendar() {
     if (!currentUser) return;
 
     try {
-      const cardRef = doc(db, 'cards', cardId);
-      const cardDoc = await getDoc(cardRef);
-
-      if (!cardDoc.exists()) {
+      // Usar datos del contexto en vez de getDoc
+      const card = cards.find(c => c.id === cardId);
+      if (!card) {
         console.error('Card not found:', cardId);
         return;
       }
 
-      const cardData = cardDoc.data();
-      const currentAvailable = cardData.availableCredit || 0;
-      const creditLimit = cardData.creditLimit || 0;
+      const currentAvailable = card.availableCredit || 0;
+      const creditLimit = card.creditLimit || 0;
 
       // Calcular nuevo disponible
       const newAvailableCredit = operation === 'add'
@@ -217,6 +215,7 @@ export function PaymentCalendar() {
       const newCurrentBalance = creditLimit - newAvailableCredit;
 
       // Actualizar en Firestore
+      const cardRef = doc(db, 'cards', cardId);
       await updateDoc(cardRef, {
         availableCredit: newAvailableCredit,
         currentBalance: newCurrentBalance,
@@ -273,11 +272,13 @@ export function PaymentCalendar() {
       const instancesQuery = query(
         collection(db, 'payment_instances'),
         where('householdId', '==', currentUser.householdId),
-        where('dueDate', '>=', Timestamp.fromDate(queryStartDate))
+        where('dueDate', '>=', Timestamp.fromDate(queryStartDate)),
+        where('dueDate', '<=', Timestamp.fromDate(queryEndDate)),
+        orderBy('dueDate', 'asc')
       );
 
       const snapshot = await getDocs(instancesQuery);
-      let instancesData = snapshot.docs.map((doc) => ({
+      const instancesData = snapshot.docs.map((doc) => ({
         ...doc.data(),
         id: doc.id,
         dueDate: doc.data().dueDate?.toDate() || new Date(),
@@ -285,14 +286,6 @@ export function PaymentCalendar() {
         createdAt: doc.data().createdAt?.toDate() || new Date(),
         updatedAt: doc.data().updatedAt?.toDate() || new Date(),
       })) as PaymentInstance[];
-
-      // Filtrar por rango superior en el cliente
-      instancesData = instancesData.filter(
-        (instance) => instance.dueDate <= queryEndDate
-      );
-
-      // Ordenar por fecha
-      instancesData.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
 
       setLocalInstances(instancesData);
     } catch (error) {
