@@ -429,8 +429,8 @@ export async function generateCurrentAndNextMonthInstances(
   scheduledPayment: ScheduledPayment,
   service?: Service,
   serviceLine?: ServiceLine
-): Promise<void> {
-  if (!scheduledPayment.isActive) return;
+): Promise<PaymentInstance[]> {
+  if (!scheduledPayment.isActive) return [];
 
   const currentMonth = getCurrentMonthRange();
   const nextMonth = getNextMonthRange();
@@ -497,23 +497,34 @@ export async function generateCurrentAndNextMonthInstances(
       )
   );
 
-  // Guardar en Firestore
-  for (const instance of instancesToCreate) {
-    try {
-      const dataToSave = {
-        ...instance,
-        dueDate: Timestamp.fromDate(instance.dueDate),
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
+  // Guardar en Firestore en paralelo y retornar instancias creadas con ID
+  // Nota: createdAt/updatedAt usan Date del cliente (aproximado) ya que serverTimestamp()
+  // no se resuelve hasta que Firestore lo procesa. Valores exactos se obtienen en el próximo refetch.
+  const created = await Promise.all(
+    instancesToCreate.map(async (instance) => {
+      try {
+        const dataToSave = {
+          ...instance,
+          dueDate: Timestamp.fromDate(instance.dueDate),
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
 
-      await addDoc(collection(db, 'payment_instances'), dataToSave);
-    } catch (error) {
-      console.error('[PaymentInstances] ❌ Error guardando instancia:', error);
-      console.error('[PaymentInstances] Datos que causaron el error:', instance);
-      throw error;
-    }
-  }
+        const docRef = await addDoc(collection(db, 'payment_instances'), dataToSave);
+        return {
+          ...instance,
+          id: docRef.id,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      } catch (error) {
+        console.error('[PaymentInstances] ❌ Error guardando instancia:', error);
+        console.error('[PaymentInstances] Datos que causaron el error:', instance);
+        throw error;
+      }
+    })
+  );
+  return created;
 }
 
 /**
@@ -565,9 +576,10 @@ export async function ensureMonthlyInstances(
   services?: Service[],
   serviceLines?: ServiceLine[],
   existingInstances?: PaymentInstance[]
-): Promise<void> {
+): Promise<PaymentInstance[]> {
   const currentMonth = getCurrentMonthRange();
   const nextMonth = getNextMonthRange();
+  const allCreated: PaymentInstance[] = [];
 
   for (const scheduledPayment of scheduledPayments) {
     if (!scheduledPayment.isActive) continue;
@@ -631,9 +643,12 @@ export async function ensureMonthlyInstances(
         ? serviceLines?.find(sl => sl.id === scheduledPayment.serviceLineId)
         : undefined;
 
-      await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine);
+      const created = await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine);
+      allCreated.push(...created);
     }
   }
+
+  return allCreated;
 }
 
 /**
