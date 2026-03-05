@@ -585,10 +585,11 @@ export function analyzeServiceLineBillingCycles(
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Solo líneas activas de servicios con ciclo de facturación
+  // Líneas activas que tienen ciclo de facturación (propio o heredado del servicio)
   const activeLines = serviceLines.filter(line => {
     const service = services.find(s => s.id === line.serviceId);
-    return line.isActive && service?.serviceType === 'billing_cycle';
+    const lineHasBillingCycle = line.billingCycleDay !== undefined && line.billingDueDay !== undefined;
+    return line.isActive && (service?.serviceType === 'billing_cycle' || lineHasBillingCycle);
   });
 
   return activeLines.map(line => {
@@ -599,12 +600,14 @@ export function analyzeServiceLineBillingCycles(
     const dueDate = getServiceLineDueDate(line, cutoffDate);
 
     // Buscar pago programado para esta línea (similar a tarjetas)
+    // Tolerancia solo hacia adelante del vencimiento, no antes del corte
+    // para evitar capturar instancias del período anterior
     const toleranceMs = 5 * 24 * 60 * 60 * 1000;
 
     // Buscar en PaymentInstances
     let lineInstance = instances.find(inst =>
       inst.serviceLineId === line.id &&
-      inst.dueDate >= new Date(cutoffDate.getTime() - toleranceMs) &&
+      inst.dueDate >= cutoffDate &&
       inst.dueDate <= new Date(dueDate.getTime() + toleranceMs) &&
       (inst.status === 'pending' || inst.status === 'paid' || inst.status === 'partial')
     );
@@ -635,7 +638,7 @@ export function analyzeServiceLineBillingCycles(
       // Buscar instancia del nuevo período
       lineInstance = instances.find(inst =>
         inst.serviceLineId === line.id &&
-        inst.dueDate >= new Date(adjustedCutoffDate.getTime() - toleranceMs) &&
+        inst.dueDate >= adjustedCutoffDate &&
         inst.dueDate <= new Date(adjustedDueDate.getTime() + toleranceMs) &&
         (inst.status === 'pending' || inst.status === 'paid' || inst.status === 'partial')
       );
