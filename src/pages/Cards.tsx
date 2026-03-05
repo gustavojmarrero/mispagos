@@ -247,6 +247,21 @@ export function Cards() {
     }
   };
 
+  const upsertCardPayment = (instance: PaymentInstance) => {
+    setCardPayments(prev => {
+      const index = prev.findIndex(p => p.id === instance.id);
+      if (index === -1) {
+        return [...prev, instance].sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+      }
+      const next = [...prev];
+      next[index] = instance;
+      return next.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+    });
+    if (editingPayment?.id === instance.id) {
+      setEditingPayment(instance);
+    }
+  };
+
   const handleMarkAsPaid = async (instance: PaymentInstance) => {
     if (!currentUser) return;
 
@@ -269,12 +284,16 @@ export function Cards() {
         await updateCardAvailableCredit(instance.cardId, amountBeingPaid, 'add');
       }
 
-      toast.success('Pago marcado como realizado');
+      upsertCardPayment({
+        ...instance,
+        status: 'paid',
+        paidDate: new Date(),
+        paidAmount: instance.amount,
+        remainingAmount: 0,
+        updatedAt: new Date(),
+      });
 
-      // Recargar pagos de la tarjeta
-      if (viewingCard) {
-        await fetchCardPayments(viewingCard.id);
-      }
+      toast.success('Pago marcado como realizado');
     } catch (error) {
       console.error('Error marking as paid:', error);
       toast.error('Error al marcar como pagado');
@@ -343,6 +362,16 @@ export function Cards() {
         await updateCardAvailableCredit(editingPayment.cardId, amountToPay, 'add');
       }
 
+      upsertCardPayment({
+        ...editingPayment,
+        status: isFullyPaid ? 'paid' : 'partial',
+        paidAmount: newPaidAmount,
+        remainingAmount: newRemainingAmount,
+        partialPayments: [...(editingPayment.partialPayments || []), newPartialPayment],
+        paidDate: isFullyPaid ? new Date() : editingPayment.paidDate,
+        updatedAt: new Date(),
+      });
+
       toast.success(
         isFullyPaid
           ? 'Pago completado'
@@ -353,11 +382,6 @@ export function Cards() {
       setEditingPayment(null);
       setPartialAmount('');
       setPartialNotes('');
-
-      // Recargar pagos de la tarjeta
-      if (viewingCard) {
-        await fetchCardPayments(viewingCard.id);
-      }
     } catch (error) {
       console.error('Error saving partial payment:', error);
       toast.error('Error al registrar el pago parcial');
@@ -411,12 +435,17 @@ export function Cards() {
         await updateCardAvailableCredit(instance.cardId, payment.amount, 'subtract');
       }
 
-      toast.success('Pago parcial eliminado');
+      upsertCardPayment({
+        ...instance,
+        status: newPaidAmount === 0 ? 'pending' : 'partial',
+        paidAmount: newPaidAmount === 0 ? undefined : newPaidAmount,
+        remainingAmount: newRemainingAmount,
+        partialPayments: updatedPartialPayments,
+        paidDate: newPaidAmount === 0 ? undefined : instance.paidDate,
+        updatedAt: new Date(),
+      });
 
-      // Recargar pagos de la tarjeta
-      if (viewingCard) {
-        await fetchCardPayments(viewingCard.id);
-      }
+      toast.success('Pago parcial eliminado');
     } catch (error: any) {
       console.error('Error deleting partial payment:', error);
       toast.error('Error al eliminar el pago parcial');
