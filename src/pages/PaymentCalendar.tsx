@@ -97,8 +97,8 @@ export function PaymentCalendar() {
     scheduledPayments,
     paymentInstances: contextInstances,
     loading: dataLoading,
-    refetchPaymentInstances,
     refetchCards,
+    upsertPaymentInstance,
   } = useData();
   const { services } = useServices();
   const { banks } = useBanks();
@@ -231,15 +231,6 @@ export function PaymentCalendar() {
     }
   };
 
-  // Después de mutaciones, refrescar instancias según el filtro activo
-  const refreshInstances = async () => {
-    if (timeFilter === 'all' || (timeFilter === 'custom' && customStartDate)) {
-      await fetchInstances();
-    } else {
-      await refetchPaymentInstances();
-    }
-  };
-
   const fetchInstances = async () => {
     if (!currentUser) return;
     setLocalLoading(true);
@@ -292,6 +283,39 @@ export function PaymentCalendar() {
       console.error('Error fetching instances:', error);
     } finally {
       setLocalLoading(false);
+    }
+  };
+
+  const mergePaymentInstance = (
+    instance: PaymentInstance,
+    patch: Partial<PaymentInstance>
+  ): PaymentInstance => ({
+    ...instance,
+    ...patch,
+    updatedAt: new Date(),
+  });
+
+  const upsertLocalInstance = (instance: PaymentInstance) => {
+    setLocalInstances(prev => {
+      const index = prev.findIndex(i => i.id === instance.id);
+      if (index === -1) {
+        return [...prev, instance].sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+      }
+      const next = [...prev];
+      next[index] = instance;
+      return next.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+    });
+  };
+
+  const syncUpdatedInstance = (instance: PaymentInstance, patch: Partial<PaymentInstance>) => {
+    const updatedInstance = mergePaymentInstance(instance, patch);
+    if (needsLocalFetch) {
+      upsertLocalInstance(updatedInstance);
+    } else {
+      upsertPaymentInstance(updatedInstance);
+    }
+    if (editingInstance?.id === updatedInstance.id) {
+      setEditingInstance(updatedInstance);
     }
   };
 
@@ -545,8 +569,13 @@ export function PaymentCalendar() {
         await updateCardAvailableCredit(instance.cardId, amountBeingPaid, 'add');
       }
 
+      syncUpdatedInstance(instance, {
+        status: 'paid',
+        paidDate: new Date(),
+        paidAmount: instance.amount,
+        remainingAmount: 0,
+      });
       toast.success('Pago marcado como realizado');
-      await refreshInstances();
     } catch (error) {
       console.error('Error marking as paid:', error);
       toast.error('Error al marcar como pagado');
@@ -565,8 +594,8 @@ export function PaymentCalendar() {
         updatedByName: currentUser.name,
       });
 
+      syncUpdatedInstance(instance, { status: 'cancelled' });
       toast.success('Pago cancelado');
-      await refreshInstances();
     } catch (error) {
       console.error('Error cancelling payment:', error);
       toast.error('Error al cancelar el pago');
@@ -601,6 +630,12 @@ export function PaymentCalendar() {
           updatedBy: currentUser.id,
           updatedByName: currentUser.name,
         });
+        syncUpdatedInstance(instance, {
+          status: 'partial',
+          paidDate: undefined,
+          paidAmount: totalPaid,
+          remainingAmount: remaining,
+        });
         toast.success('Pago marcado como parcial');
       } else {
         // Si no hay pagos parciales, marcar como pendiente
@@ -613,6 +648,12 @@ export function PaymentCalendar() {
           updatedBy: currentUser.id,
           updatedByName: currentUser.name,
         });
+        syncUpdatedInstance(instance, {
+          status: 'pending',
+          paidDate: undefined,
+          paidAmount: undefined,
+          remainingAmount: instance.amount,
+        });
         toast.success('Pago marcado como pendiente');
       }
 
@@ -620,8 +661,6 @@ export function PaymentCalendar() {
       if (instance.paymentType === 'card_payment' && instance.cardId && amountToRevert > 0) {
         await updateCardAvailableCredit(instance.cardId, amountToRevert, 'subtract');
       }
-
-      await refreshInstances();
     } catch (error) {
       console.error('Error unmarking as paid:', error);
       toast.error('Error al desmarcar como pagado');
@@ -693,6 +732,15 @@ export function PaymentCalendar() {
 
       await updateDoc(doc(db, 'payment_instances', editingInstance.id), updateData);
 
+      syncUpdatedInstance(editingInstance, {
+        amount: newAmount,
+        remainingAmount: Math.max(0, newRemainingAmount),
+        status: newStatus,
+        notes: adjustNotes || undefined,
+        paidAmount: newStatus === 'pending' ? undefined : newPaidAmount,
+        paidDate: newStatus === 'paid' ? new Date() : editingInstance.paidDate,
+      });
+
       if (newStatus === 'paid' && editingInstance.status !== 'paid') {
         toast.success('Los anticipos cubrieron el monto ajustado. Pago marcado como completado.');
       } else {
@@ -700,7 +748,6 @@ export function PaymentCalendar() {
       }
       setShowAdjustModal(false);
       setEditingInstance(null);
-      await refreshInstances();
     } catch (error) {
       console.error('Error adjusting amount:', error);
       toast.error('Error al ajustar el monto');
@@ -766,6 +813,14 @@ export function PaymentCalendar() {
         await updateCardAvailableCredit(editingInstance.cardId, amountToPay, 'add');
       }
 
+      syncUpdatedInstance(editingInstance, {
+        status: isFullyPaid ? 'paid' : 'partial',
+        paidAmount: newPaidAmount,
+        remainingAmount: newRemainingAmount,
+        partialPayments: [...(editingInstance.partialPayments || []), newPartialPayment],
+        paidDate: isFullyPaid ? new Date() : editingInstance.paidDate,
+      });
+
       toast.success(
         isFullyPaid
           ? 'Pago completado'
@@ -776,7 +831,6 @@ export function PaymentCalendar() {
       setEditingInstance(null);
       setPartialAmount('');
       setPartialNotes('');
-      await refreshInstances();
     } catch (error) {
       console.error('Error saving partial payment:', error);
       toast.error('Error al registrar el pago parcial');
@@ -831,8 +885,15 @@ export function PaymentCalendar() {
         await updateCardAvailableCredit(instance.cardId, payment.amount, 'subtract');
       }
 
+      syncUpdatedInstance(instance, {
+        status: newPaidAmount === 0 ? 'pending' : 'partial',
+        paidAmount: newPaidAmount === 0 ? undefined : newPaidAmount,
+        remainingAmount: newRemainingAmount,
+        partialPayments: updatedPartialPayments,
+        paidDate: newPaidAmount === 0 ? undefined : instance.paidDate,
+      });
+
       toast.success('Pago parcial eliminado');
-      await refreshInstances();
     } catch (error: any) {
       console.error('Error deleting partial payment:', error);
 
@@ -857,8 +918,15 @@ export function PaymentCalendar() {
             await updateCardAvailableCredit(instance.cardId, instance.paidAmount, 'subtract');
           }
 
+          syncUpdatedInstance(instance, {
+            status: 'pending',
+            paidAmount: undefined,
+            remainingAmount: instance.amount,
+            partialPayments: [],
+            paidDate: undefined,
+          });
+
           toast.success('Pagos parciales limpiados (formato antiguo incompatible)');
-          await refreshInstances();
           return;
         } catch (cleanupError) {
           console.error('Error cleaning up partial payments:', cleanupError);
