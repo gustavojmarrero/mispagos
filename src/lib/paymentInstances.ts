@@ -401,6 +401,7 @@ export function generateInstancesForDateRange(
         status: 'pending',
         cardId: scheduledPayment.cardId,
         serviceId: scheduledPayment.serviceId,
+        serviceLineId: scheduledPayment.serviceLineId,
         createdBy: scheduledPayment.createdBy,
         createdByName: scheduledPayment.createdByName,
         updatedBy: scheduledPayment.updatedBy,

@@ -197,7 +197,6 @@ export function Payments() {
     const analysis = analyzeServiceLineBillingCycles(
       allServiceLines.filter(l => l.isActive),
       services,
-      payments,
       paymentInstances
     );
 

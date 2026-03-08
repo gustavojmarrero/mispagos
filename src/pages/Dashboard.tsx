@@ -7,7 +7,6 @@ import { useServiceLines } from '@/hooks/useServiceLines';
 import {
   calculateWeeklyCashFlow,
   analyzeCardPeriods,
-  analyzeServiceBillingCycles,
   analyzeServiceLineBillingCycles,
   generateSmartAlerts,
   getNext7DaysTimeline,
@@ -105,16 +104,10 @@ export function Dashboard() {
     [cards, paymentInstances, scheduledPayments]
   );
 
-  // Analizar servicios con ciclo de facturación
-  const serviceBillingAnalysis = useMemo(
-    () => analyzeServiceBillingCycles(services, paymentInstances),
-    [services, paymentInstances]
-  );
-
-  // Analizar líneas de servicio con ciclo de facturación (similar a tarjetas)
+  // Analizar líneas de servicio con ciclo de facturación
   const serviceLineBillingAnalysis = useMemo(
-    () => analyzeServiceLineBillingCycles(serviceLines, services, scheduledPayments, paymentInstances),
-    [serviceLines, services, scheduledPayments, paymentInstances]
+    () => analyzeServiceLineBillingCycles(serviceLines, services, paymentInstances),
+    [serviceLines, services, paymentInstances]
   );
 
   const smartAlerts = useMemo(
@@ -126,10 +119,9 @@ export function Dashboard() {
         cardPeriods,
         cashFlow,
         banks,
-        serviceBillingAnalysis,
         serviceLineBillingAnalysis
       ),
-    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow, banks, serviceBillingAnalysis, serviceLineBillingAnalysis]
+    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow, banks, serviceLineBillingAnalysis]
   );
 
   // Timeline usa todas las instancias sin filtrar por mes,
