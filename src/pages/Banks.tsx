@@ -27,7 +27,7 @@ import { Building2, Edit, Trash2, Plus, X, Search, Loader2 } from 'lucide-react'
 
 export function Banks() {
   const { currentUser } = useAuth();
-  const { banks, loading, refetchBanks } = useData();
+  const { banks, loading } = useData();
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingBank, setEditingBank] = useState<Bank | null>(null);
@@ -70,7 +70,6 @@ export function Banks() {
       }
 
       resetForm();
-      await refetchBanks();
     } catch (error) {
       console.error('Error saving bank:', error);
       toast.error('Error al guardar el banco');
@@ -95,7 +94,6 @@ export function Banks() {
       // TODO: Verificar que no haya tarjetas asociadas
       await deleteDoc(doc(db, 'banks', bankId));
       toast.success('Banco eliminado exitosamente');
-      await refetchBanks();
     } catch (error) {
       console.error('Error deleting bank:', error);
       toast.error('Error al eliminar el banco');

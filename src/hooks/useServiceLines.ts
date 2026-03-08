@@ -9,7 +9,7 @@ interface UseServiceLinesOptions {
 
 export function useServiceLines(options: UseServiceLinesOptions = {}) {
   const { serviceId, activeOnly = true } = options;
-  const { serviceLines: rawServiceLines, loading, errors, refetchServiceLines } = useData();
+  const { serviceLines: rawServiceLines, loading, errors } = useData();
 
   const serviceLines = useMemo(() => {
     let result = [...rawServiceLines];
@@ -25,11 +25,11 @@ export function useServiceLines(options: UseServiceLinesOptions = {}) {
     return result.sort((a: ServiceLine, b: ServiceLine) => a.name.localeCompare(b.name));
   }, [rawServiceLines, serviceId, activeOnly]);
 
-  return { serviceLines, loading, error: errors.serviceLines ?? null, refetch: refetchServiceLines };
+  return { serviceLines, loading, error: errors.serviceLines ?? null };
 }
 
 export function useServiceLinesGrouped() {
-  const { serviceLines, loading, error, refetch } = useServiceLines({ activeOnly: false });
+  const { serviceLines, loading, error } = useServiceLines({ activeOnly: false });
 
   const { groupedByService, linesCountByService } = useMemo(() => {
     const grouped: Record<string, ServiceLine[]> = {};
@@ -48,6 +48,5 @@ export function useServiceLinesGrouped() {
     linesCountByService,
     loading,
     error,
-    refetch
   };
 }

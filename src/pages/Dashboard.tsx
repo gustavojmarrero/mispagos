@@ -27,12 +27,12 @@ export function Dashboard() {
     paymentInstances,
     scheduledPayments,
     loading,
-    appendPaymentInstances,
+    isInstancesGenerated,
+    markInstancesGenerated,
   } = useData();
   const { services } = useServices();
   const { banks } = useBanks();
   const { serviceLines } = useServiceLines({ activeOnly: true });
-  const instancesGeneratedRef = useRef(false);
   const isGeneratingRef = useRef(false);
 
   // Refs para datos auxiliares que no deben ser dependencias del efecto de generación
@@ -44,28 +44,25 @@ export function Dashboard() {
   paymentInstancesRef.current = paymentInstances;
   const scheduledPaymentsRef = useRef(scheduledPayments);
   scheduledPaymentsRef.current = scheduledPayments;
-  const appendPaymentInstancesRef = useRef(appendPaymentInstances);
-  appendPaymentInstancesRef.current = appendPaymentInstances;
 
   // Trigger: generar instancias faltantes del mes actual y siguiente
+  // instancesGenerated persiste en DataContext (sobrevive remounts del Dashboard)
+  // Las instancias nuevas se reflejan automáticamente via onSnapshot
   useEffect(() => {
-    if (!householdId || loading || instancesGeneratedRef.current || isGeneratingRef.current) return;
+    if (!householdId || loading || isInstancesGenerated() || isGeneratingRef.current) return;
     if (scheduledPaymentsRef.current.length === 0) return;
 
     const generateMissingInstances = async () => {
       isGeneratingRef.current = true;
       try {
-        const newInstances = await ensureMonthlyInstances(
+        await ensureMonthlyInstances(
           householdId,
           scheduledPaymentsRef.current,
           servicesRef.current,
           serviceLinesRef.current,
           paymentInstancesRef.current
         );
-        instancesGeneratedRef.current = true;
-        if (newInstances.length > 0) {
-          appendPaymentInstancesRef.current(newInstances);
-        }
+        markInstancesGenerated();
       } catch (error: unknown) {
         const firebaseError = error as { message?: string; code?: string };
         console.error('[Dashboard] Error generando instancias:', firebaseError.code, firebaseError.message);
@@ -75,7 +72,7 @@ export function Dashboard() {
     };
 
     generateMissingInstances();
-  }, [householdId, loading]);
+  }, [householdId, loading, isInstancesGenerated, markInstancesGenerated]);
 
   // Rango de fechas fijo: mes actual
   const dateRange = useMemo(() => {

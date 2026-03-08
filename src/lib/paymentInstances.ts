@@ -429,7 +429,8 @@ export function generateInstancesForDateRange(
 export async function generateCurrentAndNextMonthInstances(
   scheduledPayment: ScheduledPayment,
   service?: Service,
-  serviceLine?: ServiceLine
+  serviceLine?: ServiceLine,
+  knownExistingInstances?: PaymentInstance[]
 ): Promise<PaymentInstance[]> {
   if (!scheduledPayment.isActive) return [];
 
@@ -480,13 +481,19 @@ export async function generateCurrentAndNextMonthInstances(
     allInstances = [...currentMonthInstances, ...nextMonthInstances];
   }
 
-  // Revalidar contra Firestore para evitar duplicados, acotado al rango mes actual → fin mes siguiente
-  const existingInstances = await getExistingInstances(
-    scheduledPayment.householdId,
-    scheduledPayment.id,
-    currentMonth.start,
-    nextMonth.end
-  );
+  // Usar instancias conocidas si están disponibles (evita query Firestore duplicada),
+  // sino revalidar contra Firestore para evitar duplicados
+  const existingInstances = knownExistingInstances
+    ? knownExistingInstances.filter(i =>
+        i.scheduledPaymentId === scheduledPayment.id &&
+        i.dueDate >= currentMonth.start && i.dueDate <= nextMonth.end
+      )
+    : await getExistingInstances(
+        scheduledPayment.householdId,
+        scheduledPayment.id,
+        currentMonth.start,
+        nextMonth.end
+      );
 
   // Filtrar las que no existen
   const instancesToCreate = allInstances.filter(
@@ -644,7 +651,11 @@ export async function ensureMonthlyInstances(
         ? serviceLines?.find(sl => sl.id === scheduledPayment.serviceLineId)
         : undefined;
 
-      const created = await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine);
+      // Pasar instancias conocidas para evitar query Firestore duplicada
+      const knownForPayment = existingInstances
+        ? existingInstances.filter(i => i.scheduledPaymentId === scheduledPayment.id)
+        : undefined;
+      const created = await generateCurrentAndNextMonthInstances(scheduledPayment, service, serviceLine, knownForPayment);
       allCreated.push(...created);
     }
   }
