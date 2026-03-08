@@ -46,7 +46,6 @@ export function Services() {
     services,
     paymentInstances,
     loading,
-    refetchServices,
   } = useData();
   const [searchParams] = useSearchParams();
   const [saving, setSaving] = useState(false);
@@ -67,7 +66,7 @@ export function Services() {
   });
 
   // Hook para obtener líneas de servicio agrupadas
-  const { linesCountByService, refetch: refetchServiceLines } = useServiceLinesGrouped();
+  const { linesCountByService } = useServiceLinesGrouped();
 
   // Abrir panel de servicio automáticamente si viene viewService en la URL (desde alertas del Dashboard)
   useEffect(() => {
@@ -153,9 +152,8 @@ export function Services() {
 
       const serviceIdToReopen = editingFromView;
       resetForm();
-      await refetchServices();
 
-      // Si estábamos editando desde el Sheet, reabrir cuando services se actualicen
+      // Si estábamos editando desde el Sheet, reabrir cuando services se actualicen (via onSnapshot)
       if (serviceIdToReopen) {
         setPendingReopenServiceId(serviceIdToReopen);
       }
@@ -197,7 +195,6 @@ export function Services() {
     try {
       await deleteDoc(doc(db, 'services', serviceId));
       toast.success('Servicio eliminado exitosamente');
-      await refetchServices();
     } catch (error) {
       console.error('Error deleting service:', error);
       toast.error('Error al eliminar el servicio');
@@ -391,10 +388,7 @@ export function Services() {
                       <p className="text-xs text-muted-foreground mb-3">
                         Solo si tienes múltiples contratos con diferentes ciclos (ej: telefonía)
                       </p>
-                      <ServiceLineList
-                        service={editingService}
-                        onLinesChange={refetchServiceLines}
-                      />
+                      <ServiceLineList service={editingService} />
                     </div>
                   )}
                 </div>
@@ -581,10 +575,7 @@ export function Services() {
                  linesCountByService[viewingService.id] > 0 && (
                   <div className="space-y-3">
                     <h4 className="text-sm font-medium text-muted-foreground">Líneas / Contratos</h4>
-                    <ServiceLineList
-                      service={viewingService}
-                      onLinesChange={refetchServiceLines}
-                    />
+                    <ServiceLineList service={viewingService} />
                   </div>
                 )}
 

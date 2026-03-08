@@ -97,8 +97,6 @@ export function PaymentCalendar() {
     scheduledPayments,
     paymentInstances: contextInstances,
     loading: dataLoading,
-    refetchCards,
-    upsertPaymentInstance,
   } = useData();
   const { services } = useServices();
   const { banks } = useBanks();
@@ -223,8 +221,7 @@ export function PaymentCalendar() {
         updatedByName: currentUser.name,
       });
 
-      // Refrescar cards del contexto
-      await refetchCards();
+      // Cards se actualizan automáticamente via onSnapshot
     } catch (error) {
       console.error('Error updating card available credit:', error);
     }
@@ -308,10 +305,10 @@ export function PaymentCalendar() {
 
   const syncUpdatedInstance = (instance: PaymentInstance, patch: Partial<PaymentInstance>) => {
     const updatedInstance = mergePaymentInstance(instance, patch);
+    // Para instancias locales (timeFilter all/custom), actualizar estado local
+    // Para instancias del contexto, onSnapshot las actualiza automáticamente
     if (needsLocalFetch) {
       upsertLocalInstance(updatedInstance);
-    } else {
-      upsertPaymentInstance(updatedInstance);
     }
     if (editingInstance?.id === updatedInstance.id) {
       setEditingInstance(updatedInstance);

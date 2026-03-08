@@ -123,7 +123,6 @@ export function Payments() {
     scheduledPayments: payments,
     paymentInstances,
     loading,
-    refetchScheduledPayments,
   } = useData();
   const { services } = useServices();
   const { banks } = useBanks();
@@ -492,8 +491,6 @@ export function Payments() {
         navigate('/');
         return;
       }
-
-      await refetchScheduledPayments();
     } catch (error) {
       console.error('[Payments] Error saving payment:', error);
       toast.error('Error al guardar el pago');
@@ -530,7 +527,6 @@ export function Payments() {
     try {
       await deleteDoc(doc(db, 'scheduled_payments', paymentId));
       toast.success('Pago eliminado exitosamente');
-      await refetchScheduledPayments();
     } catch (error) {
       console.error('Error deleting payment:', error);
       toast.error('Error al eliminar el pago');
@@ -544,7 +540,6 @@ export function Payments() {
         updatedAt: serverTimestamp(),
       });
       toast.success(payment.isActive ? 'Pago desactivado' : 'Pago activado');
-      await refetchScheduledPayments();
     } catch (error) {
       console.error('Error toggling payment:', error);
       toast.error('Error al cambiar el estado del pago');
