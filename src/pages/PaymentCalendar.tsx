@@ -146,7 +146,6 @@ export function PaymentCalendar() {
     const analysis = analyzeServiceLineBillingCycles(
       allServiceLines.filter(l => l.isActive),
       services,
-      scheduledPayments,
       instances
     );
 

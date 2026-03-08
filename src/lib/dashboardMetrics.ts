@@ -34,20 +34,6 @@ export interface CardPeriodAnalysis {
   };
 }
 
-export interface ServiceBillingAnalysis {
-  service: Service;
-  currentPeriod: {
-    cutoffDate: Date;       // Fecha de corte
-    dueDate: Date;          // Fecha de vencimiento
-    daysUntilDue: number;
-    daysAfterCutoff: number;
-    hasAmount: boolean;     // Si ya se ingresó el monto
-    amount: number;         // Monto de la instancia
-    instanceId?: string;    // ID de la instancia si existe
-    status: 'awaiting_amount' | 'ready' | 'overdue' | 'upcoming';
-  };
-}
-
 export interface ServiceLineBillingAnalysis {
   serviceLine: ServiceLine;
   service: Service;
@@ -56,7 +42,7 @@ export interface ServiceLineBillingAnalysis {
     dueDate: Date;              // Fecha de vencimiento
     daysUntilDue: number;
     daysAfterCutoff: number;
-    hasProgrammedPayment: boolean;  // ¿Tiene ScheduledPayment o PaymentInstance?
+    hasProgrammedPayment: boolean;  // ¿Tiene PaymentInstance?
     programmedAmount: number;
     status: 'covered' | 'not_programmed' | 'overdue' | 'partial' | 'programmed';
   };
@@ -73,6 +59,85 @@ export interface DayTimeline {
   instances: PaymentInstance[];
   isToday: boolean;
 }
+
+// ─── Billing Period: lógica unificada para tarjetas y líneas de servicio ───
+
+/** Tolerancia en días después del vencimiento para buscar instancias de pago */
+const BILLING_TOLERANCE_MS = 5 * 24 * 60 * 60 * 1000;
+
+/**
+ * Calcula la fecha de vencimiento relativa a una fecha de corte.
+ * Si dueDay <= cycleDay, el vencimiento cae en el mes siguiente al corte.
+ */
+function calculateDueDate(cycleDay: number, dueDay: number, cutoffDate: Date): Date {
+  let dueMonth = cutoffDate.getMonth();
+  let dueYear = cutoffDate.getFullYear();
+
+  if (dueDay <= cycleDay) {
+    dueMonth += 1;
+    if (dueMonth > 11) {
+      dueMonth = 0;
+      dueYear += 1;
+    }
+  }
+
+  const lastDayOfDueMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
+  const adjustedDueDay = Math.min(dueDay, lastDayOfDueMonth);
+
+  const result = new Date(dueYear, dueMonth, adjustedDueDay);
+  result.setHours(23, 59, 59, 999);
+  return result;
+}
+
+/**
+ * Calcula el período de facturación actual para una entidad con ciclo corte/vencimiento.
+ * Aplica a tarjetas de crédito y líneas de servicio con billing_cycle.
+ *
+ * Si hoy es antes del día de corte, retorna el período anterior (el activo que requiere pago).
+ */
+export function calculateBillingPeriod(
+  cycleDay: number,
+  dueDay: number,
+  referenceDate: Date
+): { cutoffDate: Date; dueDate: Date; nextCutoffDate: Date } {
+  const todayDay = referenceDate.getDate();
+  let year = referenceDate.getFullYear();
+  let month = referenceDate.getMonth();
+
+  // Si hoy < día de corte, el período activo es el del mes anterior
+  if (todayDay < cycleDay) {
+    month -= 1;
+    if (month < 0) {
+      month = 11;
+      year -= 1;
+    }
+  }
+
+  // Ajustar día de corte si el mes no tiene suficientes días
+  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+  const adjustedCycleDay = Math.min(cycleDay, lastDayOfMonth);
+
+  const cutoffDate = new Date(year, month, adjustedCycleDay);
+  cutoffDate.setHours(0, 0, 0, 0);
+
+  // Fecha de vencimiento
+  const dueDateResult = calculateDueDate(cycleDay, dueDay, cutoffDate);
+
+  // Siguiente fecha de corte (límite superior del período)
+  const nextCutoffDate = new Date(cutoffDate);
+  nextCutoffDate.setMonth(nextCutoffDate.getMonth() + 1);
+  const nextCutoffLastDay = new Date(
+    nextCutoffDate.getFullYear(),
+    nextCutoffDate.getMonth() + 1,
+    0
+  ).getDate();
+  nextCutoffDate.setDate(Math.min(cycleDay, nextCutoffLastDay));
+  nextCutoffDate.setHours(23, 59, 59, 999);
+
+  return { cutoffDate, dueDate: dueDateResult, nextCutoffDate };
+}
+
+// ─── Cash Flow ───
 
 /**
  * Calcula el flujo de efectivo semanal y mensual
@@ -254,68 +319,7 @@ export function calculateWeeklyCashFlow(
   };
 }
 
-/**
- * Tolerancia en días para considerar un pago como válido para una tarjeta.
- * Permite pagos programados hasta X días antes/después de la fecha de vencimiento.
- */
-
-/**
- * Calcula la fecha de corte para una tarjeta.
- * Si el día actual es menor que el día de corte, retorna el corte del mes anterior
- * (ya que ese es el período "activo" que requiere pago).
- */
-function getClosingDate(card: Card, referenceDate: Date): Date {
-  const todayDay = referenceDate.getDate();
-  let year = referenceDate.getFullYear();
-  let month = referenceDate.getMonth();
-
-  // Si el día actual es menor que el día de corte,
-  // el corte relevante es del mes anterior
-  if (todayDay < card.closingDay) {
-    month = month - 1;
-    if (month < 0) {
-      month = 11;
-      year = year - 1;
-    }
-  }
-
-  // Ajustar día si el mes no tiene suficientes días (ej: 31 en meses de 30 días)
-  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
-  const adjustedClosingDay = Math.min(card.closingDay, lastDayOfMonth);
-
-  const closingDate = new Date(year, month, adjustedClosingDay);
-  closingDate.setHours(0, 0, 0, 0);
-
-  return closingDate;
-}
-
-/**
- * Calcula la fecha de pago esperada para una tarjeta basado en su corte
- */
-function getExpectedDueDate(card: Card, closingDate: Date): Date {
-  const year = closingDate.getFullYear();
-  const month = closingDate.getMonth();
-
-  let dueMonth = month;
-  let dueYear = year;
-
-  if (card.dueDay <= card.closingDay) {
-    dueMonth = month + 1;
-    if (dueMonth > 11) {
-      dueMonth = 0;
-      dueYear = year + 1;
-    }
-  }
-
-  // Ajustar día si el mes no tiene suficientes días (ej: 31 en meses de 30 días)
-  const lastDayOfDueMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
-  const adjustedDueDay = Math.min(card.dueDay, lastDayOfDueMonth);
-
-  const dueDate = new Date(dueYear, dueMonth, adjustedDueDay);
-  dueDate.setHours(23, 59, 59, 999);
-
-  return dueDate;
-}
+// ─── Card Period Analysis ───
 
 /**
  * Analiza el período actual de cada tarjeta
@@ -329,39 +333,26 @@ export function analyzeCardPeriods(
   today.setHours(0, 0, 0, 0);
 
   return cards.map((card) => {
-    // Calcular fecha de corte del mes actual
-    const closingDate = getClosingDate(card, today);
+    const { cutoffDate, dueDate, nextCutoffDate } = calculateBillingPeriod(
+      card.closingDay,
+      card.dueDay,
+      today
+    );
 
-    // Calcular fecha de pago esperada
-    const dueDate = getExpectedDueDate(card, closingDate);
-
-    // Calcular días hasta vencimiento
     const daysUntilDue = Math.ceil(
       (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    // Calcular el límite superior: siguiente fecha de corte
-    // Un pago pertenece a este ciclo si cae entre el corte actual y el siguiente
-    const nextClosingDate = new Date(closingDate);
-    nextClosingDate.setMonth(nextClosingDate.getMonth() + 1);
-    const nextClosingLastDay = new Date(nextClosingDate.getFullYear(), nextClosingDate.getMonth() + 1, 0).getDate();
-    nextClosingDate.setDate(Math.min(card.closingDay, nextClosingLastDay));
-    nextClosingDate.setHours(23, 59, 59, 999);
-
-    // Calcular el límite inferior para búsqueda de instancias
-    // Cuando closingDay = dueDay, el día del corte es también el vencimiento del período anterior
-    // Por eso usamos el día DESPUÉS del corte como límite inferior
-    const searchStartDate = new Date(closingDate);
+    // Buscar desde día después del corte hasta el siguiente corte
+    const searchStartDate = new Date(cutoffDate);
     searchStartDate.setDate(searchStartDate.getDate() + 1);
 
-    // Buscar pagos programados para esta tarjeta en el período
-    // Rango: desde día después del corte hasta el siguiente corte
     const cardInstances = instances.filter(
       (instance) =>
         instance.cardId === card.id &&
         instance.paymentType === 'card_payment' &&
         instance.dueDate >= searchStartDate &&
-        instance.dueDate <= nextClosingDate
+        instance.dueDate <= nextCutoffDate
     );
 
     const cardScheduled = scheduled.filter(
@@ -371,7 +362,7 @@ export function analyzeCardPeriods(
         s.isActive === true &&
         s.paymentDate &&
         s.paymentDate >= searchStartDate &&
-        s.paymentDate <= nextClosingDate
+        s.paymentDate <= nextCutoffDate
     );
 
     const hasProgrammedPayment =
@@ -380,12 +371,10 @@ export function analyzeCardPeriods(
       ) || cardScheduled.length > 0;
 
     // Usar instancias si existen, si no usar scheduled payments
-    // Evitar duplicación ya que las instancias se generan de los scheduled
     const programmedAmount = cardInstances.length > 0
       ? cardInstances.reduce((sum, i) => sum + getAmountToPay(i), 0)
       : cardScheduled.reduce((sum, s) => sum + s.amount, 0);
 
-    // Determinar status
     let status: 'covered' | 'not_programmed' | 'overdue';
     if (daysUntilDue < 0) {
       status = 'overdue';
@@ -398,7 +387,7 @@ export function analyzeCardPeriods(
     return {
       card,
       currentPeriod: {
-        closingDate,
+        closingDate: cutoffDate,
         dueDate,
         daysUntilDue,
         totalCharges: card.currentBalance,
@@ -410,176 +399,15 @@ export function analyzeCardPeriods(
   });
 }
 
-/**
- * Calcula la fecha de corte para un servicio con billing_cycle
- */
-function getServiceCutoffDate(service: Service, referenceDate: Date): Date {
-  if (!service.billingCycleDay) return new Date();
-
-  const year = referenceDate.getFullYear();
-  const month = referenceDate.getMonth();
-  const cutoffDate = new Date(year, month, service.billingCycleDay);
-  cutoffDate.setHours(0, 0, 0, 0);
-
-  return cutoffDate;
-}
+// ─── Service Line Billing Analysis ───
 
 /**
- * Calcula la fecha de vencimiento para un servicio con billing_cycle
- */
-function getServiceDueDate(service: Service, cutoffDate: Date): Date {
-  if (!service.billingDueDay || !service.billingCycleDay) return new Date();
-
-  const year = cutoffDate.getFullYear();
-  const month = cutoffDate.getMonth();
-
-  let dueMonth = month;
-  let dueYear = year;
-
-  // Si el día de vencimiento es menor que el día de corte, es el mes siguiente
-  if (service.billingDueDay <= service.billingCycleDay) {
-    dueMonth = month + 1;
-    if (dueMonth > 11) {
-      dueMonth = 0;
-      dueYear = year + 1;
-    }
-  }
-
-  const dueDate = new Date(dueYear, dueMonth, service.billingDueDay);
-  dueDate.setHours(23, 59, 59, 999);
-
-  return dueDate;
-}
-
-/**
- * Analiza servicios con ciclo de facturación
- */
-export function analyzeServiceBillingCycles(
-  services: Service[],
-  instances: PaymentInstance[]
-): ServiceBillingAnalysis[] {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Filtrar solo servicios con billing_cycle
-  const billingCycleServices = services.filter(
-    (s) => s.serviceType === 'billing_cycle' && s.billingCycleDay && s.billingDueDay
-  );
-
-  return billingCycleServices.map((service) => {
-    // Calcular fecha de corte del mes actual
-    const cutoffDate = getServiceCutoffDate(service, today);
-
-    // Calcular fecha de vencimiento
-    const dueDate = getServiceDueDate(service, cutoffDate);
-
-    // Calcular días
-    const daysUntilDue = Math.ceil(
-      (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
-    );
-    const daysAfterCutoff = Math.ceil(
-      (today.getTime() - cutoffDate.getTime()) / (1000 * 60 * 60 * 24)
-    );
-
-    // Buscar instancia de pago para este servicio en el período actual
-    const toleranceMs = 5 * 24 * 60 * 60 * 1000; // 5 días de tolerancia
-    const serviceInstance = instances.find(
-      (instance) =>
-        instance.serviceId === service.id &&
-        instance.dueDate >= new Date(cutoffDate.getTime() - toleranceMs) &&
-        instance.dueDate <= new Date(dueDate.getTime() + toleranceMs) &&
-        (instance.status === 'pending' || instance.status === 'partial')
-    );
-
-    const hasAmount = serviceInstance ? serviceInstance.amount > 0 : false;
-    const amount = serviceInstance?.amount || 0;
-
-    // Determinar status
-    let status: 'awaiting_amount' | 'ready' | 'overdue' | 'upcoming';
-    if (daysUntilDue < 0) {
-      status = 'overdue';
-    } else if (daysAfterCutoff > 0 && !hasAmount) {
-      // Ya pasó el corte pero no tiene monto
-      status = 'awaiting_amount';
-    } else if (hasAmount) {
-      status = 'ready';
-    } else {
-      status = 'upcoming';
-    }
-
-    return {
-      service,
-      currentPeriod: {
-        cutoffDate,
-        dueDate,
-        daysUntilDue,
-        daysAfterCutoff,
-        hasAmount,
-        amount,
-        instanceId: serviceInstance?.id,
-        status,
-      },
-    };
-  });
-}
-
-/**
- * Calcula la fecha de corte para una línea de servicio.
- * Si el día actual es menor que el día de corte, retorna el corte del mes anterior
- * (ya que ese es el período "activo" que requiere pago).
- */
-function getServiceLineCutoffDate(line: ServiceLine, referenceDate: Date): Date {
-  const todayDay = referenceDate.getDate();
-  let year = referenceDate.getFullYear();
-  let month = referenceDate.getMonth();
-
-  // Si el día actual es menor que el día de corte,
-  // el corte relevante es del mes anterior
-  if (todayDay < line.billingCycleDay) {
-    month = month - 1;
-    if (month < 0) {
-      month = 11;
-      year = year - 1;
-    }
-  }
-
-  // Ajustar día si el mes no tiene suficientes días (ej: 31 en meses de 30 días)
-  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
-  const adjustedCycleDay = Math.min(line.billingCycleDay, lastDayOfMonth);
-
-  const cutoffDate = new Date(year, month, adjustedCycleDay);
-  cutoffDate.setHours(0, 0, 0, 0);
-  return cutoffDate;
-}
-
-/**
- * Calcula la fecha de vencimiento para una línea de servicio
- */
-function getServiceLineDueDate(line: ServiceLine, cutoffDate: Date): Date {
-  let dueMonth = cutoffDate.getMonth();
-  let dueYear = cutoffDate.getFullYear();
-
-  // Si dueDay <= cutoffDay, vencimiento es mes siguiente
-  if (line.billingDueDay <= line.billingCycleDay) {
-    dueMonth += 1;
-    if (dueMonth > 11) {
-      dueMonth = 0;
-      dueYear += 1;
-    }
-  }
-
-  const dueDate = new Date(dueYear, dueMonth, line.billingDueDay);
-  dueDate.setHours(23, 59, 59, 999);
-  return dueDate;
-}
-
-/**
- * Analiza líneas de servicio con ciclo de facturación (similar a tarjetas)
+ * Analiza líneas de servicio con ciclo de facturación.
+ * Usa la misma lógica de período que tarjetas (calculateBillingPeriod).
  */
 export function analyzeServiceLineBillingCycles(
   serviceLines: ServiceLine[],
   services: Service[],
-  _scheduledPayments: ScheduledPayment[],  // No usado: el estado se determina por PaymentInstance
   instances: PaymentInstance[]
 ): ServiceLineBillingAnalysis[] {
   const today = new Date();
@@ -595,81 +423,73 @@ export function analyzeServiceLineBillingCycles(
   return activeLines.map(line => {
     const service = services.find(s => s.id === line.serviceId);
 
-    // Calcular fechas usando billingCycleDay y billingDueDay de la línea
-    const cutoffDate = getServiceLineCutoffDate(line, today);
-    const dueDate = getServiceLineDueDate(line, cutoffDate);
+    // Calcular período usando la función unificada
+    let { cutoffDate, dueDate } = calculateBillingPeriod(
+      line.billingCycleDay,
+      line.billingDueDay,
+      today
+    );
 
-    // Buscar pago programado para esta línea (similar a tarjetas)
-    // Tolerancia solo hacia adelante del vencimiento, no antes del corte
-    // para evitar capturar instancias del período anterior
-    const toleranceMs = 5 * 24 * 60 * 60 * 1000;
-
-    // Buscar en PaymentInstances
+    // Buscar instancia en el período actual
     let lineInstance = instances.find(inst =>
       inst.serviceLineId === line.id &&
       inst.dueDate >= cutoffDate &&
-      inst.dueDate <= new Date(dueDate.getTime() + toleranceMs) &&
+      inst.dueDate <= new Date(dueDate.getTime() + BILLING_TOLERANCE_MS) &&
       (inst.status === 'pending' || inst.status === 'paid' || inst.status === 'partial')
     );
 
-    // Si el período está pagado Y ya pasó la fecha de vencimiento,
-    // O si el vencimiento es anterior a la creación de la línea (no existía),
-    // avanzar al siguiente período
-    let adjustedCutoffDate = cutoffDate;
-    let adjustedDueDate = dueDate;
-
-    // Convertir createdAt a Date (puede ser Firestore Timestamp)
+    // Avanzar al siguiente período si:
+    // - El período actual está pagado y ya venció
+    // - El vencimiento es anterior a la creación de la línea
     const lineCreatedAt = line.createdAt instanceof Date
       ? line.createdAt
       : (line.createdAt as any)?.toDate?.() || new Date(0);
 
-    // Avanzar si: período pagado y vencido, O vencimiento anterior a creación de la línea
     const shouldAdvancePeriod =
       (lineInstance?.status === 'paid' && dueDate < today) ||
       (dueDate < lineCreatedAt);
 
     if (shouldAdvancePeriod) {
-      // Avanzar al siguiente período
-      adjustedCutoffDate = new Date(cutoffDate);
-      adjustedCutoffDate.setMonth(adjustedCutoffDate.getMonth() + 1);
+      // Avanzar corte un mes y recalcular vencimiento
+      cutoffDate = new Date(cutoffDate);
+      cutoffDate.setMonth(cutoffDate.getMonth() + 1);
+      const maxDay = new Date(cutoffDate.getFullYear(), cutoffDate.getMonth() + 1, 0).getDate();
+      cutoffDate.setDate(Math.min(line.billingCycleDay, maxDay));
 
-      adjustedDueDate = getServiceLineDueDate(line, adjustedCutoffDate);
+      dueDate = calculateDueDate(line.billingCycleDay, line.billingDueDay, cutoffDate);
 
       // Buscar instancia del nuevo período
       lineInstance = instances.find(inst =>
         inst.serviceLineId === line.id &&
-        inst.dueDate >= adjustedCutoffDate &&
-        inst.dueDate <= new Date(adjustedDueDate.getTime() + toleranceMs) &&
+        inst.dueDate >= cutoffDate &&
+        inst.dueDate <= new Date(dueDate.getTime() + BILLING_TOLERANCE_MS) &&
         (inst.status === 'pending' || inst.status === 'paid' || inst.status === 'partial')
       );
     }
 
-    // Recalcular días con fechas ajustadas
-    const adjustedDaysUntilDue = Math.ceil(
-      (adjustedDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    // Calcular días con fechas (posiblemente ajustadas)
+    const daysUntilDue = Math.ceil(
+      (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
     );
-    const adjustedDaysAfterCutoff = Math.ceil(
-      (today.getTime() - adjustedCutoffDate.getTime()) / (1000 * 60 * 60 * 24)
+    const daysAfterCutoff = Math.ceil(
+      (today.getTime() - cutoffDate.getTime()) / (1000 * 60 * 60 * 24)
     );
 
-    // Para líneas de servicio con ciclo de facturación, el estado se determina
-    // solo por la existencia de una PaymentInstance, no por el ScheduledPayment
-    // (el ScheduledPayment es solo la plantilla de recurrencia)
     const hasProgrammedPayment = !!lineInstance;
     const programmedAmount = lineInstance?.amount || 0;
     const isPaid = lineInstance?.status === 'paid';
     const isPartial = lineInstance?.status === 'partial';
 
-    // Determinar status - distinguir entre pagado y programado
+    // Determinar status
     let status: 'covered' | 'not_programmed' | 'overdue' | 'partial' | 'programmed';
-    if (adjustedDaysUntilDue < 0 && !hasProgrammedPayment) {
+    if (daysUntilDue < 0 && !hasProgrammedPayment) {
       status = 'overdue';
     } else if (isPaid) {
-      status = 'covered';  // Solo si realmente está pagado
+      status = 'covered';
     } else if (isPartial) {
       status = 'partial';
     } else if (hasProgrammedPayment) {
-      status = 'programmed';  // Programado pero no pagado
+      status = 'programmed';
     } else {
       status = 'not_programmed';
     }
@@ -678,17 +498,19 @@ export function analyzeServiceLineBillingCycles(
       serviceLine: line,
       service: service!,
       currentPeriod: {
-        cutoffDate: adjustedCutoffDate,
-        dueDate: adjustedDueDate,
-        daysUntilDue: adjustedDaysUntilDue,
-        daysAfterCutoff: adjustedDaysAfterCutoff,
+        cutoffDate,
+        dueDate,
+        daysUntilDue,
+        daysAfterCutoff,
         hasProgrammedPayment,
         programmedAmount,
         status,
       }
     };
-  }).filter(analysis => analysis.service); // Filtrar líneas sin servicio asociado
+  }).filter(analysis => analysis.service);
 }
+
+// ─── Timeline ───
 
 /**
  * Genera timeline de próximos 7 días
