@@ -64,7 +64,7 @@ import { formatCurrency } from '@/lib/utils';
 export function Cards() {
   const { currentUser } = useAuth();
   const { banks } = useBanks();
-  const { cards, loading, refetchCards } = useData();
+  const { cards, loading } = useData();
   const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [editingCard, setEditingCard] = useState<CardType | null>(null);
@@ -196,10 +196,7 @@ export function Cards() {
         updatedByName: currentUser.name,
       });
 
-      // Refrescar cards del contexto
-      await refetchCards();
-
-      // Actualizar viewingCard si es la misma tarjeta
+      // Actualizar viewingCard si es la misma tarjeta (onSnapshot actualizará cards automáticamente)
       if (viewingCard?.id === cardId) {
         setViewingCard(prev => prev ? {
           ...prev,
@@ -540,7 +537,6 @@ export function Cards() {
       }
 
       resetForm();
-      await refetchCards();
     } catch (error) {
       console.error('Error saving card:', error);
       toast.error('Error al guardar la tarjeta');
@@ -624,7 +620,6 @@ export function Cards() {
     try {
       await deleteDoc(doc(db, 'cards', cardId));
       toast.success('Tarjeta eliminada exitosamente');
-      await refetchCards();
     } catch (error) {
       console.error('Error deleting card:', error);
       toast.error('Error al eliminar la tarjeta');

@@ -39,13 +39,12 @@ import { useServiceLines } from '@/hooks/useServiceLines';
 
 interface ServiceLineListProps {
   service: Service;
-  onLinesChange?: () => void;
 }
 
-export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps) {
+export function ServiceLineList({ service }: ServiceLineListProps) {
   const { currentUser } = useAuth();
   const { scheduledPayments: allScheduledPayments } = useData();
-  const { serviceLines, loading, refetch } = useServiceLines({
+  const { serviceLines, loading } = useServiceLines({
     serviceId: service.id,
     activeOnly: false, // Mostrar todas, activas e inactivas
   });
@@ -82,8 +81,6 @@ export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps
       });
 
       toast.success('Línea creada exitosamente');
-      await refetch();
-      onLinesChange?.();
     } catch (error) {
       console.error('Error creating service line:', error);
       toast.error('Error al crear la línea');
@@ -104,8 +101,6 @@ export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps
 
       toast.success('Línea actualizada exitosamente');
       setEditingLine(null);
-      await refetch();
-      onLinesChange?.();
     } catch (error) {
       console.error('Error updating service line:', error);
       toast.error('Error al actualizar la línea');
@@ -119,8 +114,6 @@ export function ServiceLineList({ service, onLinesChange }: ServiceLineListProps
     try {
       await deleteDoc(doc(db, 'service_lines', lineId));
       toast.success('Línea eliminada exitosamente');
-      await refetch();
-      onLinesChange?.();
     } catch (error) {
       console.error('Error deleting service line:', error);
       toast.error('Error al eliminar la línea');
