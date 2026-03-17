@@ -34,6 +34,20 @@ export interface CardPeriodAnalysis {
   };
 }
 
+export interface ServiceBillingAnalysis {
+  service: Service;
+  currentPeriod: {
+    cutoffDate: Date;
+    dueDate: Date;
+    daysUntilDue: number;
+    daysAfterCutoff: number;
+    hasAmount: boolean;
+    amount: number;
+    instanceId?: string;
+    status: 'awaiting_amount' | 'ready' | 'overdue' | 'upcoming';
+  };
+}
+
 export interface ServiceLineBillingAnalysis {
   serviceLine: ServiceLine;
   service: Service;
@@ -393,6 +407,76 @@ export function analyzeCardPeriods(
         totalCharges: card.currentBalance,
         hasProgrammedPayment,
         programmedAmount,
+        status,
+      },
+    };
+  });
+}
+
+// ─── Service-Level Billing Analysis ───
+
+/**
+ * Analiza servicios billing_cycle a nivel de servicio (sin líneas).
+ * Genera alertas de "sin monto" cuando el corte ya pasó pero no hay instancia con monto.
+ * Solo aplica a servicios billing_cycle que tienen billingCycleDay/billingDueDay propios.
+ */
+export function analyzeServiceBillingCycles(
+  services: Service[],
+  instances: PaymentInstance[]
+): ServiceBillingAnalysis[] {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const billingCycleServices = services.filter(
+    s => s.serviceType === 'billing_cycle' && s.billingCycleDay && s.billingDueDay
+  );
+
+  return billingCycleServices.map(service => {
+    const { cutoffDate, dueDate } = calculateBillingPeriod(
+      service.billingCycleDay!,
+      service.billingDueDay!,
+      today
+    );
+
+    const daysUntilDue = Math.ceil(
+      (dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    const daysAfterCutoff = Math.ceil(
+      (today.getTime() - cutoffDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    const toleranceMs = BILLING_TOLERANCE_MS;
+    const serviceInstance = instances.find(inst =>
+      inst.serviceId === service.id &&
+      inst.dueDate >= new Date(cutoffDate.getTime() - toleranceMs) &&
+      inst.dueDate <= new Date(dueDate.getTime() + toleranceMs) &&
+      (inst.status === 'pending' || inst.status === 'partial')
+    );
+
+    const hasAmount = serviceInstance ? serviceInstance.amount > 0 : false;
+    const amount = serviceInstance?.amount || 0;
+
+    let status: 'awaiting_amount' | 'ready' | 'overdue' | 'upcoming';
+    if (daysUntilDue < 0) {
+      status = 'overdue';
+    } else if (daysAfterCutoff > 0 && !hasAmount) {
+      status = 'awaiting_amount';
+    } else if (hasAmount) {
+      status = 'ready';
+    } else {
+      status = 'upcoming';
+    }
+
+    return {
+      service,
+      currentPeriod: {
+        cutoffDate,
+        dueDate,
+        daysUntilDue,
+        daysAfterCutoff,
+        hasAmount,
+        amount,
+        instanceId: serviceInstance?.id,
         status,
       },
     };

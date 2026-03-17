@@ -76,8 +76,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Record<DataErrorKey, string | null>>(INITIAL_ERRORS);
 
-  // Track instances generation across Dashboard mounts (persists while DataProvider is mounted)
-  const instancesGeneratedRef = useRef(false);
+  // Track instances generation by month key (e.g. "2026-03")
+  // Se reinicia automáticamente al cambiar de mes, permitiendo regenerar instancias
+  const instancesGeneratedForMonthRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!householdId) {
@@ -89,12 +90,12 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setPaymentInstances([]);
       setLoading(false);
       setErrors(INITIAL_ERRORS);
-      instancesGeneratedRef.current = false;
+      instancesGeneratedForMonthRef.current = null;
       return;
     }
 
     setLoading(true);
-    instancesGeneratedRef.current = false;
+    instancesGeneratedForMonthRef.current = null;
 
     const loaded = new Set<string>();
     const TOTAL = 6;
@@ -240,8 +241,15 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     return () => unsubs.forEach(unsub => unsub());
   }, [householdId]);
 
-  const isInstancesGenerated = useCallback(() => instancesGeneratedRef.current, []);
-  const markInstancesGenerated = useCallback(() => { instancesGeneratedRef.current = true; }, []);
+  const isInstancesGenerated = useCallback(() => {
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    return instancesGeneratedForMonthRef.current === currentMonth;
+  }, []);
+  const markInstancesGenerated = useCallback(() => {
+    const now = new Date();
+    instancesGeneratedForMonthRef.current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
 
   const value: DataContextType = useMemo(() => ({
     cards, banks, services, serviceLines, scheduledPayments, paymentInstances,

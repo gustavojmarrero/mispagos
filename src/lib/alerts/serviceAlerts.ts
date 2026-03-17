@@ -1,13 +1,52 @@
 /**
- * Alertas relacionadas con líneas de servicio
+ * Alertas relacionadas con servicios y líneas de servicio
  */
 
-import type { ServiceLineBillingAnalysis } from '../dashboardMetrics';
+import type { ServiceBillingAnalysis, ServiceLineBillingAnalysis } from '../dashboardMetrics';
 import type { SmartAlert } from './types';
 
 interface ServiceAlertsContext {
+  serviceBillingAnalysis: ServiceBillingAnalysis[];
   serviceLineBillingAnalysis: ServiceLineBillingAnalysis[];
   today: Date;
+}
+
+/**
+ * Genera alertas para servicios billing_cycle sin monto después del corte.
+ * Excluye servicios que tienen líneas (esas alertas van a nivel línea).
+ */
+export function generateServiceAwaitingAmountAlerts(ctx: ServiceAlertsContext): SmartAlert[] {
+  const alerts: SmartAlert[] = [];
+
+  // Servicios que ya tienen alertas a nivel línea
+  const servicesWithLines = new Set(
+    ctx.serviceLineBillingAnalysis.map(a => a.service.id)
+  );
+
+  const servicesNeedingAmount = ctx.serviceBillingAnalysis.filter(
+    a => a.currentPeriod.status === 'awaiting_amount' && !servicesWithLines.has(a.service.id)
+  );
+
+  servicesNeedingAmount.forEach(analysis => {
+    const daysAfterCutoff = analysis.currentPeriod.daysAfterCutoff;
+
+    alerts.push({
+      id: `service-awaiting-amount-${analysis.service.id}`,
+      type: 'service_awaiting_amount',
+      severity: 'critical',
+      title: `${analysis.service.name} sin monto`,
+      description: `Cortó hace ${daysAfterCutoff} día${daysAfterCutoff !== 1 ? 's' : ''}, ingresa el monto del recibo`,
+      action: {
+        label: 'Actualizar monto',
+        route: '/services',
+        params: { viewService: analysis.service.id },
+      },
+      data: analysis,
+      sortValue: daysAfterCutoff,
+    });
+  });
+
+  return alerts;
 }
 
 /**
