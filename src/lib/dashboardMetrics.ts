@@ -413,15 +413,18 @@ export function analyzeServiceLineBillingCycles(
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Líneas activas que tienen ciclo de facturación (propio o heredado del servicio)
+  // Lookup rápido de servicios para evitar N+1 en filter + map
+  const serviceMap = new Map(services.map(s => [s.id, s]));
+
+  // Solo líneas activas cuyo servicio padre es billing_cycle
+  // Servicios fixed no tienen concepto de corte — son pagos fijos con fecha
   const activeLines = serviceLines.filter(line => {
-    const service = services.find(s => s.id === line.serviceId);
-    const lineHasBillingCycle = line.billingCycleDay !== undefined && line.billingDueDay !== undefined;
-    return line.isActive && (service?.serviceType === 'billing_cycle' || lineHasBillingCycle);
+    const service = serviceMap.get(line.serviceId);
+    return line.isActive && service?.serviceType === 'billing_cycle';
   });
 
   return activeLines.map(line => {
-    const service = services.find(s => s.id === line.serviceId);
+    const service = serviceMap.get(line.serviceId)!;
 
     // Calcular período usando la función unificada
     let { cutoffDate, dueDate } = calculateBillingPeriod(
@@ -430,11 +433,14 @@ export function analyzeServiceLineBillingCycles(
       today
     );
 
+    // Calcular límite superior una vez fuera del find
+    let dueDateLimit = new Date(dueDate.getTime() + BILLING_TOLERANCE_MS);
+
     // Buscar instancia en el período actual
     let lineInstance = instances.find(inst =>
       inst.serviceLineId === line.id &&
       inst.dueDate >= cutoffDate &&
-      inst.dueDate <= new Date(dueDate.getTime() + BILLING_TOLERANCE_MS) &&
+      inst.dueDate <= dueDateLimit &&
       (inst.status === 'pending' || inst.status === 'paid' || inst.status === 'partial')
     );
 
@@ -457,12 +463,13 @@ export function analyzeServiceLineBillingCycles(
       cutoffDate.setDate(Math.min(line.billingCycleDay, maxDay));
 
       dueDate = calculateDueDate(line.billingCycleDay, line.billingDueDay, cutoffDate);
+      dueDateLimit = new Date(dueDate.getTime() + BILLING_TOLERANCE_MS);
 
       // Buscar instancia del nuevo período
       lineInstance = instances.find(inst =>
         inst.serviceLineId === line.id &&
         inst.dueDate >= cutoffDate &&
-        inst.dueDate <= new Date(dueDate.getTime() + BILLING_TOLERANCE_MS) &&
+        inst.dueDate <= dueDateLimit &&
         (inst.status === 'pending' || inst.status === 'paid' || inst.status === 'partial')
       );
     }
@@ -477,16 +484,14 @@ export function analyzeServiceLineBillingCycles(
 
     const hasProgrammedPayment = !!lineInstance;
     const programmedAmount = lineInstance?.amount || 0;
-    const isPaid = lineInstance?.status === 'paid';
-    const isPartial = lineInstance?.status === 'partial';
 
     // Determinar status
     let status: 'covered' | 'not_programmed' | 'overdue' | 'partial' | 'programmed';
     if (daysUntilDue < 0 && !hasProgrammedPayment) {
       status = 'overdue';
-    } else if (isPaid) {
+    } else if (lineInstance?.status === 'paid') {
       status = 'covered';
-    } else if (isPartial) {
+    } else if (lineInstance?.status === 'partial') {
       status = 'partial';
     } else if (hasProgrammedPayment) {
       status = 'programmed';
@@ -496,7 +501,7 @@ export function analyzeServiceLineBillingCycles(
 
     return {
       serviceLine: line,
-      service: service!,
+      service,
       currentPeriod: {
         cutoffDate,
         dueDate,
@@ -507,7 +512,7 @@ export function analyzeServiceLineBillingCycles(
         status,
       }
     };
-  }).filter(analysis => analysis.service);
+  });
 }
 
 // ─── Timeline ───
