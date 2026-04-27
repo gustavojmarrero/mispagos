@@ -93,6 +93,10 @@ interface PaymentInstanceInput {
   updatedByName: string;
 }
 
+interface EnsurePaymentInstancesData {
+  force?: boolean;
+}
+
 interface PhysicalCardResponse {
   label: string;
   lastDigitsPhysical: string | null;
@@ -132,6 +136,12 @@ function getDateKey(date: Date): string {
 
 function getPaymentInstanceDocId(scheduledPaymentId: string, dueDate: Date): string {
   return `${scheduledPaymentId}_${getDateKey(dueDate)}`;
+}
+
+function getPaymentGenerationKey(referenceDate = new Date()): string {
+  const currentMonth = getCurrentMonthRange(referenceDate);
+  const nextMonth = getNextMonthRange(referenceDate);
+  return `${getDateKey(currentMonth.start)}_${getDateKey(nextMonth.end)}`;
 }
 
 function getCurrentMonthRange(referenceDate = new Date()): { start: Date; end: Date } {
@@ -344,7 +354,7 @@ function isAlreadyExistsError(error: unknown): boolean {
   );
 }
 
-export const ensurePaymentInstances = functions.https.onCall(async (_data, context) => {
+export const ensurePaymentInstances = functions.https.onCall(async (data: EnsurePaymentInstancesData | undefined, context) => {
   if (!context.auth) {
     throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
   }
@@ -352,6 +362,24 @@ export const ensurePaymentInstances = functions.https.onCall(async (_data, conte
   const householdId = context.auth.token.householdId as string | undefined;
   if (!householdId) {
     throw new functions.https.HttpsError('failed-precondition', 'Missing householdId claim');
+  }
+
+  const force = data?.force === true;
+  const generationKey = getPaymentGenerationKey();
+  const generationStateRef = db.collection('payment_instance_generation_state').doc(householdId);
+  const generationState = await generationStateRef.get();
+
+  if (!force && generationState.exists) {
+    const state = generationState.data();
+    if (state?.generationKey === generationKey && state?.version === 1) {
+      return {
+        success: true,
+        skipped: true,
+        checkedCount: 0,
+        createdCount: 0,
+        existingCount: 0,
+      };
+    }
   }
 
   const [scheduledSnapshot, servicesSnapshot, serviceLinesSnapshot] = await Promise.all([
@@ -430,8 +458,20 @@ export const ensurePaymentInstances = functions.https.onCall(async (_data, conte
     }
   }));
 
+  await generationStateRef.set({
+    householdId,
+    generationKey,
+    version: 1,
+    checkedCount: expectedInstances.length,
+    createdCount,
+    existingCount,
+    force,
+    completedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
+
   return {
     success: true,
+    skipped: false,
     checkedCount: expectedInstances.length,
     createdCount,
     existingCount,
