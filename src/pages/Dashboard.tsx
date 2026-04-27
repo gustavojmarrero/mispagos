@@ -7,11 +7,12 @@ import { useServiceLines } from '@/hooks/useServiceLines';
 import {
   calculateWeeklyCashFlow,
   analyzeCardPeriods,
+  analyzeServiceBillingCycles,
   analyzeServiceLineBillingCycles,
   generateSmartAlerts,
   getNext7DaysTimeline,
 } from '@/lib/dashboardMetrics';
-import { ensureMonthlyInstances } from '@/lib/paymentInstances';
+import { ensurePaymentInstances } from '@/lib/serverPaymentInstances';
 import { WeeklyCashFlowCard } from '@/components/WeeklyCashFlowCard';
 import { SmartAlertsList } from '@/components/SmartAlertsList';
 import { WeeklyTimeline } from '@/components/WeeklyTimeline';
@@ -36,12 +37,6 @@ export function Dashboard() {
   const isGeneratingRef = useRef(false);
 
   // Refs para datos auxiliares que no deben ser dependencias del efecto de generación
-  const servicesRef = useRef(services);
-  servicesRef.current = services;
-  const serviceLinesRef = useRef(serviceLines);
-  serviceLinesRef.current = serviceLines;
-  const paymentInstancesRef = useRef(paymentInstances);
-  paymentInstancesRef.current = paymentInstances;
   const scheduledPaymentsRef = useRef(scheduledPayments);
   scheduledPaymentsRef.current = scheduledPayments;
 
@@ -55,13 +50,7 @@ export function Dashboard() {
     const generateMissingInstances = async () => {
       isGeneratingRef.current = true;
       try {
-        await ensureMonthlyInstances(
-          householdId,
-          scheduledPaymentsRef.current,
-          servicesRef.current,
-          serviceLinesRef.current,
-          paymentInstancesRef.current
-        );
+        await ensurePaymentInstances();
         markInstancesGenerated();
       } catch (error: unknown) {
         const firebaseError = error as { message?: string; code?: string };
@@ -101,6 +90,12 @@ export function Dashboard() {
     [cards, paymentInstances, scheduledPayments]
   );
 
+  // Analizar servicios billing_cycle a nivel servicio (sin líneas)
+  const serviceBillingAnalysis = useMemo(
+    () => analyzeServiceBillingCycles(services, paymentInstances),
+    [services, paymentInstances]
+  );
+
   // Analizar líneas de servicio con ciclo de facturación
   const serviceLineBillingAnalysis = useMemo(
     () => analyzeServiceLineBillingCycles(serviceLines, services, paymentInstances),
@@ -116,9 +111,10 @@ export function Dashboard() {
         cardPeriods,
         cashFlow,
         banks,
+        serviceBillingAnalysis,
         serviceLineBillingAnalysis
       ),
-    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow, banks, serviceLineBillingAnalysis]
+    [cards, filteredPaymentInstances, scheduledPayments, cardPeriods, cashFlow, banks, serviceBillingAnalysis, serviceLineBillingAnalysis]
   );
 
   // Timeline usa todas las instancias sin filtrar por mes,

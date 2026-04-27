@@ -18,7 +18,8 @@ import { useData } from '@/contexts/DataContext';
 import { useServices } from '@/hooks/useServices';
 import { useBanks } from '@/hooks/useBanks';
 import { useServiceLines } from '@/hooks/useServiceLines';
-import { generateCurrentAndNextMonthInstances, updateExistingInstances } from '@/lib/paymentInstances';
+import { updateExistingInstances } from '@/lib/paymentInstances';
+import { ensurePaymentInstances } from '@/lib/serverPaymentInstances';
 import { analyzeServiceLineBillingCycles } from '@/lib/dashboardMetrics';
 import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -458,11 +459,6 @@ export function Payments() {
           ? services.find(s => s.id === savedPayment.serviceId)
           : undefined;
 
-        // Buscar la línea de servicio asociada si existe
-        const selectedLine = savedPayment.serviceLineId
-          ? selectedServiceLines.find(sl => sl.id === savedPayment.serviceLineId)
-          : undefined;
-
         // Si es una edición, actualizar las instancias existentes primero
         if (editingPayment) {
           console.log('[Payments] Actualizando instancias existentes...');
@@ -476,7 +472,7 @@ export function Payments() {
         }
 
         // Luego generar nuevas instancias si faltan
-        await generateCurrentAndNextMonthInstances(savedPayment, selectedService, selectedLine);
+        await ensurePaymentInstances();
         console.log('[Payments] Instancias generadas exitosamente');
       } catch (instanceError) {
         console.error('[Payments] Error generando instancias:', instanceError);

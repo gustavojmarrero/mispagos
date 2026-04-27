@@ -28,7 +28,7 @@ export function Reports() {
     loading,
   } = useData();
 
-  // Instancias locales para rangos que exceden la ventana del contexto (3 meses)
+  // Instancias locales para rangos que exceden la ventana operativa del contexto
   const [localInstances, setLocalInstances] = useState<PaymentInstance[]>([]);
 
   // Date range state
@@ -39,12 +39,12 @@ export function Reports() {
     return { from: startOfMonth, to: endOfMonth, preset: 'current-month' };
   });
 
-  // Determinar si el rango de fecha excede la ventana del contexto (3 meses atras)
+  // Determinar si el rango de fecha excede la ventana reciente del contexto
   const needsExtendedFetch = useMemo(() => {
     if (dateRange.preset === 'all' || dateRange.preset === 'last-6-months') return true;
     if (!dateRange.from) return true;
     const contextStart = new Date();
-    contextStart.setMonth(contextStart.getMonth() - 3, 1);
+    contextStart.setMonth(contextStart.getMonth() - 1, 1);
     contextStart.setHours(0, 0, 0, 0);
     return dateRange.from < contextStart;
   }, [dateRange]);

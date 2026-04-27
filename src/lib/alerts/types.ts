@@ -6,6 +6,7 @@ export type AlertSeverity = 'critical' | 'warning' | 'info';
 
 export type AlertType =
   | 'card_no_payment'
+  | 'service_awaiting_amount'
   | 'service_line_no_payment'
   | 'overdue'
   | 'upcoming'
