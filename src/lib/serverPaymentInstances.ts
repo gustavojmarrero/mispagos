@@ -3,16 +3,21 @@ import { functions } from './firebase';
 
 interface EnsurePaymentInstancesResult {
   success: boolean;
+  skipped?: boolean;
   checkedCount: number;
   createdCount: number;
   existingCount: number;
 }
 
-export async function ensurePaymentInstances(): Promise<EnsurePaymentInstancesResult> {
-  const callable = httpsCallable<undefined, EnsurePaymentInstancesResult>(
+interface EnsurePaymentInstancesOptions {
+  force?: boolean;
+}
+
+export async function ensurePaymentInstances(options?: EnsurePaymentInstancesOptions): Promise<EnsurePaymentInstancesResult> {
+  const callable = httpsCallable<EnsurePaymentInstancesOptions | undefined, EnsurePaymentInstancesResult>(
     functions,
     'ensurePaymentInstances'
   );
-  const result = await callable(undefined);
+  const result = await callable(options);
   return result.data;
 }
