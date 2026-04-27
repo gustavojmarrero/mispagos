@@ -203,9 +203,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       }
     ));
 
-    // Payment Instances (with date range filter)
+    // Payment Instances (recent operational window)
     const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+    const startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endDate = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59, 999);
 
     unsubs.push(onSnapshot(

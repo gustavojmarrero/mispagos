@@ -1,10 +1,18 @@
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 
+// La app maneja vencimientos como fechas locales. Mantener el runtime en la
+// misma zona evita que los Timestamps creados en servidor caigan el día previo.
+process.env.TZ = 'America/Merida';
+
 // Inicializar Firebase Admin
 admin.initializeApp();
 
 const db = admin.firestore();
+
+type PaymentType = 'card_payment' | 'service_payment';
+type PaymentFrequency = 'monthly' | 'weekly' | 'once' | 'billing_cycle';
+type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 // Tipos
 interface PhysicalCard {
@@ -33,6 +41,58 @@ interface Bank {
   name: string;
 }
 
+interface ScheduledPayment {
+  id: string;
+  userId: string;
+  householdId: string;
+  paymentType: PaymentType;
+  frequency?: PaymentFrequency;
+  description: string;
+  amount: number;
+  paymentDate?: Date;
+  dueDay?: number;
+  dayOfWeek?: DayOfWeek;
+  cardId?: string;
+  serviceId?: string;
+  serviceLineId?: string;
+  isActive: boolean;
+  createdBy: string;
+  createdByName: string;
+  updatedBy: string;
+  updatedByName: string;
+}
+
+interface Service {
+  id: string;
+  serviceType: 'fixed' | 'billing_cycle';
+  billingCycleDay?: number;
+  billingDueDay?: number;
+}
+
+interface ServiceLine {
+  id: string;
+  billingCycleDay?: number;
+  billingDueDay?: number;
+}
+
+interface PaymentInstanceInput {
+  userId: string;
+  householdId: string;
+  scheduledPaymentId: string;
+  paymentType: PaymentType;
+  dueDate: Date;
+  amount: number;
+  description: string;
+  status: 'pending';
+  cardId?: string;
+  serviceId?: string;
+  serviceLineId?: string;
+  createdBy: string;
+  createdByName: string;
+  updatedBy: string;
+  updatedByName: string;
+}
+
 interface PhysicalCardResponse {
   label: string;
   lastDigitsPhysical: string | null;
@@ -51,6 +111,332 @@ interface CardResponse {
   creditLimit: number;
   cardType: string;
 }
+
+function toDate(value: unknown): Date | undefined {
+  if (!value) return undefined;
+  if (value instanceof Date) return value;
+  if (value instanceof admin.firestore.Timestamp) return value.toDate();
+  if (typeof value === 'object' && 'toDate' in value && typeof value.toDate === 'function') {
+    return value.toDate();
+  }
+  return undefined;
+}
+
+function getDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function getPaymentInstanceDocId(scheduledPaymentId: string, dueDate: Date): string {
+  return `${scheduledPaymentId}_${getDateKey(dueDate)}`;
+}
+
+function getCurrentMonthRange(referenceDate = new Date()): { start: Date; end: Date } {
+  return {
+    start: new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1),
+    end: new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0, 23, 59, 59, 999),
+  };
+}
+
+function getNextMonthRange(referenceDate = new Date()): { start: Date; end: Date } {
+  return {
+    start: new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 1),
+    end: new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 2, 0, 23, 59, 59, 999),
+  };
+}
+
+function getLastDayOfMonth(date: Date): number {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+}
+
+function getNextWeekday(fromDate: Date, targetDay: DayOfWeek): Date {
+  const result = new Date(fromDate);
+  result.setHours(0, 0, 0, 0);
+  const currentDay = result.getDay();
+  const daysUntilTarget = (targetDay - currentDay + 7) % 7;
+  result.setDate(result.getDate() + daysUntilTarget);
+  return result;
+}
+
+function getNextMonthDay(fromDate: Date, targetDay: number): Date {
+  const result = new Date(fromDate);
+  result.setHours(0, 0, 0, 0);
+  if (result.getDate() > targetDay) {
+    result.setMonth(result.getMonth() + 1);
+  }
+  result.setDate(Math.min(targetDay, getLastDayOfMonth(result)));
+  return result;
+}
+
+function getNextOccurrenceDate(scheduledPayment: ScheduledPayment, fromDate: Date): Date | null {
+  if (scheduledPayment.paymentType === 'card_payment' && scheduledPayment.paymentDate) {
+    return scheduledPayment.paymentDate >= fromDate ? scheduledPayment.paymentDate : null;
+  }
+
+  if (scheduledPayment.paymentType !== 'service_payment') {
+    return null;
+  }
+
+  if (scheduledPayment.frequency === 'billing_cycle') {
+    return null;
+  }
+
+  if (scheduledPayment.frequency === 'weekly' && scheduledPayment.dayOfWeek !== undefined) {
+    return getNextWeekday(fromDate, scheduledPayment.dayOfWeek);
+  }
+
+  if (
+    (scheduledPayment.frequency === 'monthly' || scheduledPayment.frequency === 'once') &&
+    scheduledPayment.dueDay !== undefined
+  ) {
+    return getNextMonthDay(fromDate, scheduledPayment.dueDay);
+  }
+
+  return null;
+}
+
+function hasBillingCycleConfig(
+  scheduledPayment: ScheduledPayment,
+  service?: Service,
+  serviceLine?: ServiceLine
+): boolean {
+  return (
+    (scheduledPayment.frequency === 'billing_cycle' && service?.serviceType === 'billing_cycle') ||
+    (
+      scheduledPayment.frequency === 'billing_cycle' &&
+      serviceLine?.billingCycleDay !== undefined &&
+      serviceLine?.billingDueDay !== undefined
+    )
+  );
+}
+
+function createInstanceInput(
+  scheduledPayment: ScheduledPayment,
+  dueDate: Date
+): PaymentInstanceInput {
+  const instance: PaymentInstanceInput = {
+    userId: scheduledPayment.userId,
+    householdId: scheduledPayment.householdId,
+    scheduledPaymentId: scheduledPayment.id,
+    paymentType: scheduledPayment.paymentType,
+    dueDate,
+    amount: scheduledPayment.amount,
+    description: scheduledPayment.description,
+    status: 'pending',
+    createdBy: scheduledPayment.createdBy,
+    createdByName: scheduledPayment.createdByName,
+    updatedBy: scheduledPayment.updatedBy,
+    updatedByName: scheduledPayment.updatedByName,
+  };
+
+  if (scheduledPayment.cardId) {
+    instance.cardId = scheduledPayment.cardId;
+  }
+  if (scheduledPayment.serviceId) {
+    instance.serviceId = scheduledPayment.serviceId;
+  }
+  if (scheduledPayment.serviceLineId) {
+    instance.serviceLineId = scheduledPayment.serviceLineId;
+  }
+
+  return instance;
+}
+
+function generateBillingCycleInstances(
+  scheduledPayment: ScheduledPayment,
+  startDate: Date,
+  endDate: Date
+): PaymentInstanceInput[] {
+  if (!scheduledPayment.paymentDate) {
+    return [];
+  }
+
+  return scheduledPayment.paymentDate >= startDate && scheduledPayment.paymentDate <= endDate
+    ? [createInstanceInput(scheduledPayment, scheduledPayment.paymentDate)]
+    : [];
+}
+
+function generateInstancesForDateRange(
+  scheduledPayment: ScheduledPayment,
+  startDate: Date,
+  endDate: Date
+): PaymentInstanceInput[] {
+  if (
+    scheduledPayment.paymentType === 'card_payment' ||
+    (scheduledPayment.paymentType === 'service_payment' && scheduledPayment.frequency === 'billing_cycle')
+  ) {
+    if (!scheduledPayment.paymentDate) return [];
+    return scheduledPayment.paymentDate >= startDate && scheduledPayment.paymentDate <= endDate
+      ? [createInstanceInput(scheduledPayment, scheduledPayment.paymentDate)]
+      : [];
+  }
+
+  const instances: PaymentInstanceInput[] = [];
+  let currentDate = new Date(startDate);
+
+  while (currentDate <= endDate) {
+    const nextOccurrence = getNextOccurrenceDate(scheduledPayment, currentDate);
+    if (!nextOccurrence || nextOccurrence > endDate) break;
+
+    instances.push(createInstanceInput(scheduledPayment, nextOccurrence));
+    currentDate = new Date(nextOccurrence);
+    currentDate.setDate(currentDate.getDate() + 1);
+
+    if (scheduledPayment.frequency === 'once') break;
+  }
+
+  return instances;
+}
+
+function generateCurrentAndNextMonthInstances(
+  scheduledPayment: ScheduledPayment,
+  service?: Service,
+  serviceLine?: ServiceLine
+): PaymentInstanceInput[] {
+  const currentMonth = getCurrentMonthRange();
+  const nextMonth = getNextMonthRange();
+
+  if (hasBillingCycleConfig(scheduledPayment, service, serviceLine)) {
+    return [
+      ...generateBillingCycleInstances(scheduledPayment, currentMonth.start, currentMonth.end),
+      ...generateBillingCycleInstances(scheduledPayment, nextMonth.start, nextMonth.end),
+    ];
+  }
+
+  return [
+    ...generateInstancesForDateRange(scheduledPayment, currentMonth.start, currentMonth.end),
+    ...generateInstancesForDateRange(scheduledPayment, nextMonth.start, nextMonth.end),
+  ];
+}
+
+function mapScheduledPayment(
+  doc: admin.firestore.QueryDocumentSnapshot<admin.firestore.DocumentData>
+): ScheduledPayment {
+  const data = doc.data();
+  return {
+    ...data,
+    id: doc.id,
+    paymentDate: toDate(data.paymentDate),
+  } as ScheduledPayment;
+}
+
+function mapService(
+  doc: admin.firestore.QueryDocumentSnapshot<admin.firestore.DocumentData>
+): Service {
+  return { id: doc.id, ...doc.data() } as Service;
+}
+
+function mapServiceLine(
+  doc: admin.firestore.QueryDocumentSnapshot<admin.firestore.DocumentData>
+): ServiceLine {
+  return { id: doc.id, ...doc.data() } as ServiceLine;
+}
+
+function isAlreadyExistsError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === 6
+  );
+}
+
+export const ensurePaymentInstances = functions.https.onCall(async (_data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Authentication required');
+  }
+
+  const householdId = context.auth.token.householdId as string | undefined;
+  if (!householdId) {
+    throw new functions.https.HttpsError('failed-precondition', 'Missing householdId claim');
+  }
+
+  const [scheduledSnapshot, servicesSnapshot, serviceLinesSnapshot] = await Promise.all([
+    db.collection('scheduled_payments').where('householdId', '==', householdId).get(),
+    db.collection('services').where('householdId', '==', householdId).get(),
+    db.collection('service_lines').where('householdId', '==', householdId).get(),
+  ]);
+
+  const scheduledPayments = scheduledSnapshot.docs
+    .map(mapScheduledPayment)
+    .filter(payment => payment.isActive);
+  const services = new Map(servicesSnapshot.docs.map(doc => {
+    const service = mapService(doc);
+    return [service.id, service];
+  }));
+  const serviceLines = new Map(serviceLinesSnapshot.docs.map(doc => {
+    const serviceLine = mapServiceLine(doc);
+    return [serviceLine.id, serviceLine];
+  }));
+
+  const expectedInstances = scheduledPayments.flatMap(payment => {
+    if (payment.frequency === 'billing_cycle' && !payment.paymentDate) {
+      return [];
+    }
+
+    return generateCurrentAndNextMonthInstances(
+      payment,
+      payment.serviceId ? services.get(payment.serviceId) : undefined,
+      payment.serviceLineId ? serviceLines.get(payment.serviceLineId) : undefined
+    );
+  });
+  const currentMonth = getCurrentMonthRange();
+  const nextMonth = getNextMonthRange();
+  const existingSnapshot = await db
+    .collection('payment_instances')
+    .where('householdId', '==', householdId)
+    .where('dueDate', '>=', admin.firestore.Timestamp.fromDate(currentMonth.start))
+    .where('dueDate', '<=', admin.firestore.Timestamp.fromDate(nextMonth.end))
+    .orderBy('dueDate', 'asc')
+    .get();
+
+  const existingKeys = new Set<string>();
+  existingSnapshot.docs.forEach(doc => {
+    const data = doc.data();
+    const dueDate = toDate(data.dueDate);
+    if (typeof data.scheduledPaymentId === 'string' && dueDate) {
+      existingKeys.add(getPaymentInstanceDocId(data.scheduledPaymentId, dueDate));
+    }
+  });
+  const missingInstances = expectedInstances.filter(
+    instance => !existingKeys.has(getPaymentInstanceDocId(instance.scheduledPaymentId, instance.dueDate))
+  );
+
+  let createdCount = 0;
+  let existingCount = expectedInstances.length - missingInstances.length;
+
+  await Promise.all(missingInstances.map(async instance => {
+    const docRef = db
+      .collection('payment_instances')
+      .doc(getPaymentInstanceDocId(instance.scheduledPaymentId, instance.dueDate));
+
+    try {
+      await docRef.create({
+        ...instance,
+        dueDate: admin.firestore.Timestamp.fromDate(instance.dueDate),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      createdCount += 1;
+    } catch (error) {
+      if (isAlreadyExistsError(error)) {
+        existingCount += 1;
+        return;
+      }
+      throw error;
+    }
+  }));
+
+  return {
+    success: true,
+    checkedCount: expectedInstances.length,
+    createdCount,
+    existingCount,
+  };
+});
 
 // Middleware de autenticación por token
 const validateApiToken = (req: functions.https.Request): boolean => {
