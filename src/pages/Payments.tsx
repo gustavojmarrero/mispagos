@@ -472,7 +472,7 @@ export function Payments() {
         }
 
         // Luego generar nuevas instancias si faltan
-        await ensurePaymentInstances();
+        await ensurePaymentInstances({ force: true });
         console.log('[Payments] Instancias generadas exitosamente');
       } catch (instanceError) {
         console.error('[Payments] Error generando instancias:', instanceError);
