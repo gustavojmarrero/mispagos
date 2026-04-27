@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   collection,
   query,
@@ -63,8 +64,137 @@ const INITIAL_ERRORS: Record<DataErrorKey, string | null> = {
   paymentInstances: null,
 };
 
+const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
+
+interface StartupDataCache {
+  cachedAt: number;
+  windowStart: string;
+  windowEnd: string;
+  cards: Card[];
+  banks: Bank[];
+  services: Service[];
+  serviceLines: ServiceLine[];
+  scheduledPayments: ScheduledPayment[];
+  paymentInstances: PaymentInstance[];
+}
+
+function getCurrentMonthKey(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getDateCacheKey(date: Date) {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+}
+
+function getPaymentInstancesWindow(now = new Date()) {
+  return {
+    startDate: new Date(now.getFullYear(), now.getMonth() - 1, 1),
+    endDate: new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59, 999),
+  };
+}
+
+function getStartupCacheKey(householdId: string, startDate: Date, endDate: Date) {
+  return [
+    'mispagos:startup-data',
+    householdId,
+    getDateCacheKey(startDate),
+    getDateCacheKey(endDate),
+  ].join(':');
+}
+
+function toCachedDate(value: unknown): Date | undefined {
+  if (!value) return undefined;
+  const date = new Date(value as string);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function hydrateStartupCache(cache: StartupDataCache): StartupDataCache {
+  return {
+    ...cache,
+    cards: cache.cards.map(card => ({
+      ...card,
+      createdAt: toCachedDate(card.createdAt) || new Date(),
+      updatedAt: toCachedDate(card.updatedAt) || new Date(),
+    })),
+    banks: cache.banks.map(bank => ({
+      ...bank,
+      createdAt: toCachedDate(bank.createdAt) || new Date(),
+      updatedAt: toCachedDate(bank.updatedAt) || new Date(),
+    })),
+    services: cache.services.map(service => ({
+      ...service,
+      createdAt: toCachedDate(service.createdAt) || new Date(),
+      updatedAt: toCachedDate(service.updatedAt) || new Date(),
+    })),
+    serviceLines: cache.serviceLines.map(serviceLine => ({
+      ...serviceLine,
+      createdAt: toCachedDate(serviceLine.createdAt) || new Date(),
+      updatedAt: toCachedDate(serviceLine.updatedAt) || new Date(),
+    })),
+    scheduledPayments: cache.scheduledPayments.map(payment => ({
+      ...payment,
+      paymentDate: toCachedDate(payment.paymentDate),
+      createdAt: toCachedDate(payment.createdAt) || new Date(),
+      updatedAt: toCachedDate(payment.updatedAt) || new Date(),
+    })),
+    paymentInstances: cache.paymentInstances.map(instance => ({
+      ...instance,
+      dueDate: toCachedDate(instance.dueDate) || new Date(),
+      paidDate: toCachedDate(instance.paidDate),
+      createdAt: toCachedDate(instance.createdAt) || new Date(),
+      updatedAt: toCachedDate(instance.updatedAt) || new Date(),
+    })),
+  };
+}
+
+function readStartupCache(householdId: string, startDate: Date, endDate: Date): StartupDataCache | null {
+  try {
+    const windowStart = getDateCacheKey(startDate);
+    const windowEnd = getDateCacheKey(endDate);
+    const raw = localStorage.getItem(getStartupCacheKey(householdId, startDate, endDate));
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as StartupDataCache;
+    if (
+      Date.now() - parsed.cachedAt > DASHBOARD_CACHE_TTL_MS ||
+      parsed.windowStart !== windowStart ||
+      parsed.windowEnd !== windowEnd
+    ) {
+      return null;
+    }
+
+    return hydrateStartupCache(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function writeStartupCache(
+  householdId: string,
+  startDate: Date,
+  endDate: Date,
+  data: Omit<StartupDataCache, 'cachedAt' | 'windowStart' | 'windowEnd'>
+) {
+  try {
+    const payload: StartupDataCache = {
+      ...data,
+      cachedAt: Date.now(),
+      windowStart: getDateCacheKey(startDate),
+      windowEnd: getDateCacheKey(endDate),
+    };
+    localStorage.setItem(getStartupCacheKey(householdId, startDate, endDate), JSON.stringify(payload));
+  } catch {
+    // Si el cache local se llena o no está disponible, la app sigue usando Firestore.
+  }
+}
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const { currentUser } = useAuth();
+  const { pathname } = useLocation();
   const householdId = currentUser?.householdId ?? null;
 
   const [cards, setCards] = useState<Card[]>([]);
@@ -96,6 +226,24 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
     setLoading(true);
     instancesGeneratedForMonthRef.current = null;
+
+    const { startDate, endDate } = getPaymentInstancesWindow();
+    const cachedStartupData = pathname === '/'
+      ? readStartupCache(householdId, startDate, endDate)
+      : null;
+
+    if (cachedStartupData) {
+      setCards(cachedStartupData.cards);
+      setBanks(cachedStartupData.banks);
+      setServices(cachedStartupData.services);
+      setServiceLines(cachedStartupData.serviceLines);
+      setScheduledPayments(cachedStartupData.scheduledPayments);
+      setPaymentInstances(cachedStartupData.paymentInstances);
+      setErrors(INITIAL_ERRORS);
+      setLoading(false);
+      instancesGeneratedForMonthRef.current = getCurrentMonthKey();
+      return;
+    }
 
     const loaded = new Set<string>();
     const TOTAL = 6;
@@ -204,10 +352,6 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ));
 
     // Payment Instances (recent operational window)
-    const now = new Date();
-    const startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endDate = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59, 999);
-
     unsubs.push(onSnapshot(
       query(
         collection(db, 'payment_instances'),
@@ -239,17 +383,31 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ));
 
     return () => unsubs.forEach(unsub => unsub());
-  }, [householdId]);
+  }, [householdId, pathname]);
 
   const isInstancesGenerated = useCallback(() => {
     const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonth = getCurrentMonthKey(now);
     return instancesGeneratedForMonthRef.current === currentMonth;
   }, []);
   const markInstancesGenerated = useCallback(() => {
     const now = new Date();
-    instancesGeneratedForMonthRef.current = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    instancesGeneratedForMonthRef.current = getCurrentMonthKey(now);
   }, []);
+
+  useEffect(() => {
+    if (!householdId || loading) return;
+
+    const { startDate, endDate } = getPaymentInstancesWindow();
+    writeStartupCache(householdId, startDate, endDate, {
+      cards,
+      banks,
+      services,
+      serviceLines,
+      scheduledPayments,
+      paymentInstances,
+    });
+  }, [householdId, loading, cards, banks, services, serviceLines, scheduledPayments, paymentInstances]);
 
   const value: DataContextType = useMemo(() => ({
     cards, banks, services, serviceLines, scheduledPayments, paymentInstances,
