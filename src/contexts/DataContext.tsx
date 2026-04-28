@@ -205,46 +205,65 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Record<DataErrorKey, string | null>>(INITIAL_ERRORS);
+  const [listenersEnabled, setListenersEnabled] = useState(false);
 
   // Track instances generation by month key (e.g. "2026-03")
   // Se reinicia automáticamente al cambiar de mes, permitiendo regenerar instancias
   const instancesGeneratedForMonthRef = useRef<string | null>(null);
+  const hydratedCacheKeyRef = useRef<string | null>(null);
+  const previousHouseholdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!householdId) {
-      setCards([]);
-      setBanks([]);
-      setServices([]);
-      setServiceLines([]);
-      setScheduledPayments([]);
-      setPaymentInstances([]);
-      setLoading(false);
-      setErrors(INITIAL_ERRORS);
-      instancesGeneratedForMonthRef.current = null;
-      return;
-    }
-
-    setLoading(true);
+    if (previousHouseholdRef.current === householdId) return;
+    previousHouseholdRef.current = householdId;
+    hydratedCacheKeyRef.current = null;
     instancesGeneratedForMonthRef.current = null;
+    setListenersEnabled(false);
+
+    setCards([]);
+    setBanks([]);
+    setServices([]);
+    setServiceLines([]);
+    setScheduledPayments([]);
+    setPaymentInstances([]);
+    setErrors(INITIAL_ERRORS);
+    setLoading(Boolean(householdId));
+  }, [householdId]);
+
+  useEffect(() => {
+    if (!householdId || listenersEnabled) return;
 
     const { startDate, endDate } = getPaymentInstancesWindow();
-    const cachedStartupData = pathname === '/'
-      ? readStartupCache(householdId, startDate, endDate)
-      : null;
+    const cacheKey = getStartupCacheKey(householdId, startDate, endDate);
 
-    if (cachedStartupData) {
-      setCards(cachedStartupData.cards);
-      setBanks(cachedStartupData.banks);
-      setServices(cachedStartupData.services);
-      setServiceLines(cachedStartupData.serviceLines);
-      setScheduledPayments(cachedStartupData.scheduledPayments);
-      setPaymentInstances(cachedStartupData.paymentInstances);
-      setErrors(INITIAL_ERRORS);
-      setLoading(false);
-      instancesGeneratedForMonthRef.current = getCurrentMonthKey();
-      return;
+    if (pathname === '/') {
+      const cachedStartupData = readStartupCache(householdId, startDate, endDate);
+
+      if (cachedStartupData) {
+        if (hydratedCacheKeyRef.current !== cacheKey) {
+          setCards(cachedStartupData.cards);
+          setBanks(cachedStartupData.banks);
+          setServices(cachedStartupData.services);
+          setServiceLines(cachedStartupData.serviceLines);
+          setScheduledPayments(cachedStartupData.scheduledPayments);
+          setPaymentInstances(cachedStartupData.paymentInstances);
+          setErrors(INITIAL_ERRORS);
+          setLoading(false);
+          hydratedCacheKeyRef.current = cacheKey;
+        }
+        setListenersEnabled(true);
+        return;
+      }
     }
 
+    setListenersEnabled(true);
+  }, [householdId, listenersEnabled, pathname]);
+
+  useEffect(() => {
+    if (!householdId || !listenersEnabled) return;
+
+    setLoading(true);
+    const { startDate, endDate } = getPaymentInstancesWindow();
     const loaded = new Set<string>();
     const TOTAL = 6;
 
@@ -383,7 +402,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ));
 
     return () => unsubs.forEach(unsub => unsub());
-  }, [householdId, pathname]);
+  }, [householdId, listenersEnabled]);
 
   const isInstancesGenerated = useCallback(() => {
     const now = new Date();

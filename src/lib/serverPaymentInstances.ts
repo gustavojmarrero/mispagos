@@ -11,6 +11,7 @@ interface EnsurePaymentInstancesResult {
 
 interface EnsurePaymentInstancesOptions {
   force?: boolean;
+  scheduledPaymentId?: string;
 }
 
 export async function ensurePaymentInstances(options?: EnsurePaymentInstancesOptions): Promise<EnsurePaymentInstancesResult> {

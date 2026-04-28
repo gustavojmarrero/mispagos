@@ -95,6 +95,7 @@ interface PaymentInstanceInput {
 
 interface EnsurePaymentInstancesData {
   force?: boolean;
+  scheduledPaymentId?: string;
 }
 
 interface PhysicalCardResponse {
@@ -345,6 +346,87 @@ function mapServiceLine(
   return { id: doc.id, ...doc.data() } as ServiceLine;
 }
 
+function mapServiceDoc(
+  doc: admin.firestore.DocumentSnapshot<admin.firestore.DocumentData>
+): Service | null {
+  return doc.exists ? ({ id: doc.id, ...doc.data() } as Service) : null;
+}
+
+function mapServiceLineDoc(
+  doc: admin.firestore.DocumentSnapshot<admin.firestore.DocumentData>
+): ServiceLine | null {
+  return doc.exists ? ({ id: doc.id, ...doc.data() } as ServiceLine) : null;
+}
+
+async function fetchRelatedPaymentResources(
+  householdId: string,
+  scheduledPayments: ScheduledPayment[]
+): Promise<{ services: Map<string, Service>; serviceLines: Map<string, ServiceLine> }> {
+  const billingCyclePayments = scheduledPayments.filter(payment => payment.frequency === 'billing_cycle');
+  const serviceIds = Array.from(new Set(
+    billingCyclePayments
+      .map(payment => payment.serviceId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  ));
+  const serviceLineIds = Array.from(new Set(
+    billingCyclePayments
+      .map(payment => payment.serviceLineId)
+      .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  ));
+
+  const [serviceSnapshots, serviceLineSnapshots] = await Promise.all([
+    Promise.all(serviceIds.map(id => db.collection('services').doc(id).get())),
+    Promise.all(serviceLineIds.map(id => db.collection('service_lines').doc(id).get())),
+  ]);
+
+  const services = new Map<string, Service>();
+  serviceSnapshots.forEach(snapshot => {
+    const service = mapServiceDoc(snapshot);
+    const serviceHouseholdId = snapshot.data()?.householdId;
+    if (service && (!serviceHouseholdId || serviceHouseholdId === householdId)) {
+      services.set(service.id, service);
+    }
+  });
+
+  const serviceLines = new Map<string, ServiceLine>();
+  serviceLineSnapshots.forEach(snapshot => {
+    const serviceLine = mapServiceLineDoc(snapshot);
+    const serviceLineHouseholdId = snapshot.data()?.householdId;
+    if (serviceLine && (!serviceLineHouseholdId || serviceLineHouseholdId === householdId)) {
+      serviceLines.set(serviceLine.id, serviceLine);
+    }
+  });
+
+  return { services, serviceLines };
+}
+
+async function getExistingKeysForScheduledPayment(
+  householdId: string,
+  scheduledPaymentId: string
+): Promise<Set<string>> {
+  const currentMonth = getCurrentMonthRange();
+  const nextMonth = getNextMonthRange();
+  const existingSnapshot = await db
+    .collection('payment_instances')
+    .where('householdId', '==', householdId)
+    .where('scheduledPaymentId', '==', scheduledPaymentId)
+    .where('dueDate', '>=', admin.firestore.Timestamp.fromDate(currentMonth.start))
+    .where('dueDate', '<=', admin.firestore.Timestamp.fromDate(nextMonth.end))
+    .orderBy('dueDate', 'asc')
+    .get();
+
+  const existingKeys = new Set<string>();
+  existingSnapshot.docs.forEach(doc => {
+    const docData = doc.data();
+    const dueDate = toDate(docData.dueDate);
+    if (typeof docData.scheduledPaymentId === 'string' && dueDate) {
+      existingKeys.add(getPaymentInstanceDocId(docData.scheduledPaymentId, dueDate));
+    }
+  });
+
+  return existingKeys;
+}
+
 function isAlreadyExistsError(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -365,40 +447,71 @@ export const ensurePaymentInstances = functions.https.onCall(async (data: Ensure
   }
 
   const force = data?.force === true;
+  const scheduledPaymentId = typeof data?.scheduledPaymentId === 'string'
+    ? data.scheduledPaymentId.trim()
+    : '';
   const generationKey = getPaymentGenerationKey();
   const generationStateRef = db.collection('payment_instance_generation_state').doc(householdId);
-  const generationState = await generationStateRef.get();
 
-  if (!force && generationState.exists) {
-    const state = generationState.data();
-    if (state?.generationKey === generationKey && state?.version === 1) {
-      return {
-        success: true,
-        skipped: true,
-        checkedCount: 0,
-        createdCount: 0,
-        existingCount: 0,
-      };
+  if (!scheduledPaymentId) {
+    const generationState = await generationStateRef.get();
+
+    if (!force && generationState.exists) {
+      const state = generationState.data();
+      if (state?.generationKey === generationKey && state?.version === 1) {
+        return {
+          success: true,
+          skipped: true,
+          checkedCount: 0,
+          createdCount: 0,
+          existingCount: 0,
+        };
+      }
     }
   }
 
-  const [scheduledSnapshot, servicesSnapshot, serviceLinesSnapshot] = await Promise.all([
-    db.collection('scheduled_payments').where('householdId', '==', householdId).get(),
-    db.collection('services').where('householdId', '==', householdId).get(),
-    db.collection('service_lines').where('householdId', '==', householdId).get(),
-  ]);
+  let scheduledPayments: ScheduledPayment[];
+  let services: Map<string, Service>;
+  let serviceLines: Map<string, ServiceLine>;
 
-  const scheduledPayments = scheduledSnapshot.docs
-    .map(mapScheduledPayment)
-    .filter(payment => payment.isActive);
-  const services = new Map(servicesSnapshot.docs.map(doc => {
-    const service = mapService(doc);
-    return [service.id, service];
-  }));
-  const serviceLines = new Map(serviceLinesSnapshot.docs.map(doc => {
-    const serviceLine = mapServiceLine(doc);
-    return [serviceLine.id, serviceLine];
-  }));
+  if (scheduledPaymentId) {
+    const scheduledDoc = await db.collection('scheduled_payments').doc(scheduledPaymentId).get();
+
+    if (!scheduledDoc.exists) {
+      throw new functions.https.HttpsError('not-found', 'Scheduled payment not found');
+    }
+
+    const payment = {
+      ...scheduledDoc.data(),
+      id: scheduledDoc.id,
+      paymentDate: toDate(scheduledDoc.data()?.paymentDate),
+    } as ScheduledPayment;
+
+    if (payment.householdId !== householdId) {
+      throw new functions.https.HttpsError('permission-denied', 'Scheduled payment belongs to another household');
+    }
+
+    scheduledPayments = payment.isActive ? [payment] : [];
+    ({ services, serviceLines } = await fetchRelatedPaymentResources(householdId, scheduledPayments));
+  } else {
+    const [scheduledSnapshot, servicesSnapshot, serviceLinesSnapshot] = await Promise.all([
+      db.collection('scheduled_payments').where('householdId', '==', householdId).get(),
+      db.collection('services').where('householdId', '==', householdId).get(),
+      db.collection('service_lines').where('householdId', '==', householdId).get(),
+    ]);
+
+    scheduledPayments = scheduledSnapshot.docs
+      .map(mapScheduledPayment)
+      .filter(payment => payment.isActive);
+    services = new Map(servicesSnapshot.docs.map(doc => {
+      const service = mapService(doc);
+      return [service.id, service];
+    }));
+    serviceLines = new Map(serviceLinesSnapshot.docs.map(doc => {
+      const serviceLine = mapServiceLine(doc);
+      return [serviceLine.id, serviceLine];
+    }));
+  }
 
   const expectedInstances = scheduledPayments.flatMap(payment => {
     if (payment.frequency === 'billing_cycle' && !payment.paymentDate) {
@@ -411,24 +524,30 @@ export const ensurePaymentInstances = functions.https.onCall(async (data: Ensure
       payment.serviceLineId ? serviceLines.get(payment.serviceLineId) : undefined
     );
   });
-  const currentMonth = getCurrentMonthRange();
-  const nextMonth = getNextMonthRange();
-  const existingSnapshot = await db
-    .collection('payment_instances')
-    .where('householdId', '==', householdId)
-    .where('dueDate', '>=', admin.firestore.Timestamp.fromDate(currentMonth.start))
-    .where('dueDate', '<=', admin.firestore.Timestamp.fromDate(nextMonth.end))
-    .orderBy('dueDate', 'asc')
-    .get();
+  let existingKeys: Set<string>;
 
-  const existingKeys = new Set<string>();
-  existingSnapshot.docs.forEach(doc => {
-    const data = doc.data();
-    const dueDate = toDate(data.dueDate);
-    if (typeof data.scheduledPaymentId === 'string' && dueDate) {
-      existingKeys.add(getPaymentInstanceDocId(data.scheduledPaymentId, dueDate));
-    }
-  });
+  if (scheduledPaymentId) {
+    existingKeys = await getExistingKeysForScheduledPayment(householdId, scheduledPaymentId);
+  } else {
+    const currentMonth = getCurrentMonthRange();
+    const nextMonth = getNextMonthRange();
+    const existingSnapshot = await db
+      .collection('payment_instances')
+      .where('householdId', '==', householdId)
+      .where('dueDate', '>=', admin.firestore.Timestamp.fromDate(currentMonth.start))
+      .where('dueDate', '<=', admin.firestore.Timestamp.fromDate(nextMonth.end))
+      .orderBy('dueDate', 'asc')
+      .get();
+
+    existingKeys = new Set<string>();
+    existingSnapshot.docs.forEach(doc => {
+      const docData = doc.data();
+      const dueDate = toDate(docData.dueDate);
+      if (typeof docData.scheduledPaymentId === 'string' && dueDate) {
+        existingKeys.add(getPaymentInstanceDocId(docData.scheduledPaymentId, dueDate));
+      }
+    });
+  }
   const missingInstances = expectedInstances.filter(
     instance => !existingKeys.has(getPaymentInstanceDocId(instance.scheduledPaymentId, instance.dueDate))
   );
@@ -458,16 +577,18 @@ export const ensurePaymentInstances = functions.https.onCall(async (data: Ensure
     }
   }));
 
-  await generationStateRef.set({
-    householdId,
-    generationKey,
-    version: 1,
-    checkedCount: expectedInstances.length,
-    createdCount,
-    existingCount,
-    force,
-    completedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
+  if (!scheduledPaymentId) {
+    await generationStateRef.set({
+      householdId,
+      generationKey,
+      version: 1,
+      checkedCount: expectedInstances.length,
+      createdCount,
+      existingCount,
+      force,
+      completedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  }
 
   return {
     success: true,
