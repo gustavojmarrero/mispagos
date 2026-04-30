@@ -20,6 +20,7 @@ import type {
 } from '@/lib/types';
 
 type DataErrorKey = 'cards' | 'banks' | 'services' | 'serviceLines' | 'scheduledPayments' | 'paymentInstances';
+type DataKey = DataErrorKey;
 
 interface DataContextType {
   cards: Card[];
@@ -64,7 +65,39 @@ const INITIAL_ERRORS: Record<DataErrorKey, string | null> = {
   paymentInstances: null,
 };
 
+const ALL_DATA_KEYS: DataKey[] = [
+  'cards',
+  'banks',
+  'services',
+  'serviceLines',
+  'scheduledPayments',
+  'paymentInstances',
+];
+
 const DASHBOARD_CACHE_TTL_MS = 5 * 60 * 1000;
+
+function getRouteDataKeys(pathname: string): DataKey[] {
+  switch (pathname) {
+    case '/cards':
+      return ['cards', 'banks'];
+    case '/banks':
+      return ['banks'];
+    case '/services':
+      return ['services', 'serviceLines', 'scheduledPayments', 'paymentInstances'];
+    case '/reports':
+      return ['cards', 'services', 'scheduledPayments', 'paymentInstances'];
+    case '/payments':
+    case '/calendar':
+    case '/':
+      return ALL_DATA_KEYS;
+    default:
+      return ALL_DATA_KEYS;
+  }
+}
+
+function haveSameKeys(a: DataKey[], b: DataKey[]) {
+  return a.length === b.length && a.every(key => b.includes(key));
+}
 
 interface StartupDataCache {
   cachedAt: number;
@@ -205,20 +238,22 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [paymentInstances, setPaymentInstances] = useState<PaymentInstance[]>([]);
   const [loading, setLoading] = useState(true);
   const [errors, setErrors] = useState<Record<DataErrorKey, string | null>>(INITIAL_ERRORS);
-  const [listenersEnabled, setListenersEnabled] = useState(false);
+  const [activeListenerKeys, setActiveListenerKeys] = useState<DataKey[]>([]);
 
   // Track instances generation by month key (e.g. "2026-03")
   // Se reinicia automáticamente al cambiar de mes, permitiendo regenerar instancias
   const instancesGeneratedForMonthRef = useRef<string | null>(null);
   const hydratedCacheKeyRef = useRef<string | null>(null);
-  const previousHouseholdRef = useRef<string | null>(null);
+  const previousHouseholdRef = useRef<string | null | undefined>(undefined);
+  const loadedKeysRef = useRef<Set<DataKey>>(new Set());
 
   useEffect(() => {
     if (previousHouseholdRef.current === householdId) return;
     previousHouseholdRef.current = householdId;
     hydratedCacheKeyRef.current = null;
     instancesGeneratedForMonthRef.current = null;
-    setListenersEnabled(false);
+    loadedKeysRef.current.clear();
+    setActiveListenerKeys([]);
 
     setCards([]);
     setBanks([]);
@@ -231,7 +266,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   }, [householdId]);
 
   useEffect(() => {
-    if (!householdId || listenersEnabled) return;
+    if (!householdId) {
+      setActiveListenerKeys([]);
+      setLoading(false);
+      return;
+    }
 
     const { startDate, endDate } = getPaymentInstancesWindow();
     const cacheKey = getStartupCacheKey(householdId, startDate, endDate);
@@ -250,32 +289,36 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           setErrors(INITIAL_ERRORS);
           setLoading(false);
           hydratedCacheKeyRef.current = cacheKey;
+          loadedKeysRef.current = new Set(ALL_DATA_KEYS);
+          instancesGeneratedForMonthRef.current = getCurrentMonthKey();
         }
-        setListenersEnabled(true);
+        setActiveListenerKeys(prev => haveSameKeys(prev, []) ? prev : []);
         return;
       }
     }
 
-    setListenersEnabled(true);
-  }, [householdId, listenersEnabled, pathname]);
+    const nextKeys = getRouteDataKeys(pathname);
+    setActiveListenerKeys(prev => haveSameKeys(prev, nextKeys) ? prev : nextKeys);
+    setLoading(!nextKeys.every(key => loadedKeysRef.current.has(key)));
+  }, [householdId, pathname]);
 
   useEffect(() => {
-    if (!householdId || !listenersEnabled) return;
+    if (!householdId || activeListenerKeys.length === 0) return;
 
-    setLoading(true);
     const { startDate, endDate } = getPaymentInstancesWindow();
-    const loaded = new Set<string>();
-    const TOTAL = 6;
+    const pendingKeys = new Set(activeListenerKeys.filter(key => !loadedKeysRef.current.has(key)));
+    setLoading(pendingKeys.size > 0);
 
-    function markLoaded(key: string) {
-      loaded.add(key);
-      if (loaded.size === TOTAL) setLoading(false);
+    function markLoaded(key: DataKey) {
+      loadedKeysRef.current.add(key);
+      pendingKeys.delete(key);
+      if (pendingKeys.size === 0) setLoading(false);
     }
 
     const unsubs: (() => void)[] = [];
 
     // Cards
-    unsubs.push(onSnapshot(
+    if (activeListenerKeys.includes('cards')) unsubs.push(onSnapshot(
       query(collection(db, 'cards'), where('householdId', '==', householdId)),
       (snap) => {
         setCards(snap.docs.map(doc => {
@@ -302,7 +345,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ));
 
     // Banks
-    unsubs.push(onSnapshot(
+    if (activeListenerKeys.includes('banks')) unsubs.push(onSnapshot(
       query(collection(db, 'banks'), where('householdId', '==', householdId)),
       (snap) => {
         setBanks(snap.docs.map(doc => mapDoc<Bank>(doc)));
@@ -317,7 +360,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ));
 
     // Services
-    unsubs.push(onSnapshot(
+    if (activeListenerKeys.includes('services')) unsubs.push(onSnapshot(
       query(collection(db, 'services'), where('householdId', '==', householdId)),
       (snap) => {
         setServices(snap.docs.map(doc => mapDoc<Service>(doc)));
@@ -332,7 +375,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ));
 
     // Service Lines
-    unsubs.push(onSnapshot(
+    if (activeListenerKeys.includes('serviceLines')) unsubs.push(onSnapshot(
       query(collection(db, 'service_lines'), where('householdId', '==', householdId)),
       (snap) => {
         setServiceLines(snap.docs.map(doc => mapDoc<ServiceLine>(doc)));
@@ -347,7 +390,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ));
 
     // Scheduled Payments
-    unsubs.push(onSnapshot(
+    if (activeListenerKeys.includes('scheduledPayments')) unsubs.push(onSnapshot(
       query(collection(db, 'scheduled_payments'), where('householdId', '==', householdId)),
       (snap) => {
         setScheduledPayments(snap.docs.map(doc => {
@@ -371,7 +414,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ));
 
     // Payment Instances (recent operational window)
-    unsubs.push(onSnapshot(
+    if (activeListenerKeys.includes('paymentInstances')) unsubs.push(onSnapshot(
       query(
         collection(db, 'payment_instances'),
         where('householdId', '==', householdId),
@@ -402,7 +445,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     ));
 
     return () => unsubs.forEach(unsub => unsub());
-  }, [householdId, listenersEnabled]);
+  }, [householdId, activeListenerKeys]);
 
   const isInstancesGenerated = useCallback(() => {
     const now = new Date();
@@ -416,6 +459,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!householdId || loading) return;
+    if (!ALL_DATA_KEYS.every(key => loadedKeysRef.current.has(key))) return;
 
     const { startDate, endDate } = getPaymentInstancesWindow();
     writeStartupCache(householdId, startDate, endDate, {
