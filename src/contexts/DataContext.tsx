@@ -293,7 +293,14 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
           instancesGeneratedForMonthRef.current = getCurrentMonthKey();
         }
         setActiveListenerKeys(prev => haveSameKeys(prev, []) ? prev : []);
-        return;
+        const revalidationDelay = Math.max(
+          0,
+          DASHBOARD_CACHE_TTL_MS - (Date.now() - cachedStartupData.cachedAt)
+        );
+        const revalidationTimer = window.setTimeout(() => {
+          setActiveListenerKeys(prev => haveSameKeys(prev, ALL_DATA_KEYS) ? prev : ALL_DATA_KEYS);
+        }, revalidationDelay);
+        return () => window.clearTimeout(revalidationTimer);
       }
     }
 
