@@ -768,6 +768,7 @@ interface CatalogVersionDoc {
   banksMaxUpdatedAt: string | null; // ISO 8601
   computedAt: string;               // ISO 8601
   eventTimestamp: string | null;    // evento que produjo este valor; null si se calculó bajo demanda
+  initializing?: boolean;           // marcador temporal para que los triggers descubran el scope
 }
 
 // Firma comparable por el consumidor: si cambia, el catálogo cambió.
@@ -875,6 +876,38 @@ async function refreshCatalogVersion(
   return writeCatalogVersion(version, eventTimestamp);
 }
 
+// Registra el scope antes de leer cards y banks. Así no queda invisible para
+// un trigger de banco mientras se inicializa: si el trigger enumeró antes, su
+// escritura ya será visible al cálculo; si enumera después, verá el marcador.
+async function initializeCatalogVersion(
+  householdId: string | null
+): Promise<CatalogVersionDoc> {
+  const scope = householdId ?? GLOBAL_CATALOG_SCOPE;
+  const ref = db.collection(CATALOG_VERSIONS_COLLECTION).doc(scope);
+  const marker: CatalogVersionDoc = {
+    scope,
+    count: 0,
+    maxUpdatedAt: null,
+    banksCount: 0,
+    banksMaxUpdatedAt: null,
+    computedAt: new Date().toISOString(),
+    eventTimestamp: null,
+    initializing: true,
+  };
+
+  try {
+    // create evita pisar un agregado que otro inicializador o trigger publicó
+    // desde la lectura inicial del endpoint.
+    await ref.create(marker);
+  } catch (error) {
+    if (!isAlreadyExistsError(error)) {
+      throw error;
+    }
+  }
+
+  return refreshCatalogVersion(householdId, null);
+}
+
 // Trigger: mantiene los agregados al alta, baja o modificación de una tarjeta.
 export const onCardWriteRefreshCatalogVersion = functions.firestore
   .document('cards/{cardId}')
@@ -954,9 +987,12 @@ export const getCardsCatalogVersion = functions.https.onRequest(async (req, res)
     // bajo demanda, de modo que el endpoint responde sin esperar a la primera
     // escritura sobre cards.
     const doc = await db.collection(CATALOG_VERSIONS_COLLECTION).doc(scope).get();
-    const version = doc.exists
+    const storedVersion = doc.exists
       ? (doc.data() as CatalogVersionDoc)
-      : await refreshCatalogVersion(householdId, null);
+      : undefined;
+    const version = storedVersion && !storedVersion.initializing
+      ? storedVersion
+      : await initializeCatalogVersion(householdId);
 
     res.json({
       success: true,
