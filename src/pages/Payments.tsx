@@ -389,7 +389,7 @@ export function Payments() {
       // Auto-generar descripción para pagos a tarjetas
       let description = formData.description;
       if (formData.paymentType === 'card_payment' && formData.cardId && formData.paymentDate) {
-        description = generateCardPaymentDescription(formData.cardId, formData.paymentDate);
+        description = generateCardPaymentDescription(formData.cardId, formData.paymentDate, editingPayment?.id);
       }
 
       const dataToSave: any = {
@@ -683,13 +683,15 @@ export function Payments() {
     return duplicate || null;
   };
 
-  const generateCardPaymentDescription = (cardId: string, paymentDate: Date): string => {
+  const generateCardPaymentDescription = (cardId: string, paymentDate: Date, excludePaymentId?: string): string => {
     // Obtener el mes y año de la fecha de pago
     const month = paymentDate.toLocaleString('es-ES', { month: 'long' });
     const year = paymentDate.getFullYear();
 
     // Contar pagos existentes para esta tarjeta en este mes/año
+    // (al editar, excluir el propio pago para no numerarlo como "2do pago")
     const existingPayments = payments.filter(p =>
+      p.id !== excludePaymentId &&
       p.paymentType === 'card_payment' &&
       p.cardId === cardId &&
       p.paymentDate &&
