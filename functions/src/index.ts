@@ -747,18 +747,25 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
 // cuesta lo mismo que refrescarlo: hay que leer cards y banks completas. Un
 // ETag no lo arregla, porque el hash se calcula igual leyendo todo.
 //
-// Aquí se mantiene un documento agregado por hogar, actualizado por trigger al
-// escribir en cards. La comprobación pasa a ser 1 lectura en vez de N, y el
-// borrado de una tarjeta se detecta solo: baja el count.
+// Aquí se mantienen documentos agregados —uno por hogar, más uno global—
+// actualizados por trigger. Cualquiera de las dos rutas del endpoint lee
+// exactamente 1 documento, y el borrado de una tarjeta se detecta solo porque
+// baja el count.
 // ---------------------------------------------------------------------------
 
 const CATALOG_VERSIONS_COLLECTION = 'catalog_versions';
 
+// Agregado de todos los hogares, espejo de getCardsCredit sin householdId.
+// Los householdId son UIDs de Firebase Auth (alfanuméricos), así que este id
+// no puede colisionar con uno real.
+const GLOBAL_CATALOG_SCOPE = '__global__';
+
 interface CatalogVersionDoc {
-  householdId: string;
+  scope: string;                  // householdId, o GLOBAL_CATALOG_SCOPE
   count: number;
-  maxUpdatedAt: string | null; // ISO 8601
-  computedAt: string;          // ISO 8601
+  maxUpdatedAt: string | null;    // ISO 8601
+  computedAt: string;             // ISO 8601
+  eventTimestamp: string | null;  // evento que produjo este valor; null si se calculó bajo demanda
 }
 
 // Firma comparable por el consumidor: si cambia, el catálogo cambió.
@@ -770,13 +777,19 @@ function toIso(ms: number): string | null {
   return ms > 0 ? new Date(ms).toISOString() : null;
 }
 
-// Recalcula la versión de un hogar leyendo sus tarjetas. Caro pero infrecuente:
-// sólo corre al escribir en cards, no al consultarla.
-async function computeCatalogVersion(householdId: string): Promise<CatalogVersionDoc> {
-  const snapshot = await db.collection('cards')
-    .where('householdId', '==', householdId)
-    .where('cardType', 'in', CATALOG_CARD_TYPES)
-    .get();
+// Recalcula un agregado leyendo las tarjetas que lo componen. Caro pero
+// infrecuente: sólo corre al escribir, o la primera vez que se consulta.
+// Sin householdId cubre el catálogo global, incluidas las tarjetas legacy que
+// sólo tienen userId — las mismas que devuelve getCardsCredit sin filtrar.
+async function computeCatalogVersion(householdId: string | null): Promise<CatalogVersionDoc> {
+  let query = db.collection('cards').where('cardType', 'in', CATALOG_CARD_TYPES);
+  if (householdId) {
+    query = db.collection('cards')
+      .where('householdId', '==', householdId)
+      .where('cardType', 'in', CATALOG_CARD_TYPES);
+  }
+
+  const snapshot = await query.get();
 
   let maxUpdatedMs = 0;
   snapshot.docs.forEach(doc => {
@@ -787,72 +800,60 @@ async function computeCatalogVersion(householdId: string): Promise<CatalogVersio
   });
 
   return {
-    householdId,
+    scope: householdId ?? GLOBAL_CATALOG_SCOPE,
     count: snapshot.size,
     maxUpdatedAt: toIso(maxUpdatedMs),
     computedAt: new Date().toISOString(),
+    eventTimestamp: null,
   };
 }
 
-async function refreshCatalogVersion(householdId: string): Promise<CatalogVersionDoc> {
-  const version = await computeCatalogVersion(householdId);
-  await db.collection(CATALOG_VERSIONS_COLLECTION).doc(householdId).set(version);
-  return version;
-}
+// Los triggers de Firestore no garantizan orden: dos escrituras solapadas
+// pueden ejecutarse al revés y dejar el agregado permanentemente viejo. La
+// escritura es monotónica por timestamp de evento, así que una invocación
+// tardía con un evento anterior no pisa el resultado de uno posterior.
+async function writeCatalogVersion(
+  version: CatalogVersionDoc,
+  eventTimestamp: string | null
+): Promise<CatalogVersionDoc> {
+  const ref = db.collection(CATALOG_VERSIONS_COLLECTION).doc(version.scope);
+  const next: CatalogVersionDoc = { ...version, eventTimestamp };
 
-// Siembra la colección leyendo cards una vez. Sólo corre si nunca se ha
-// calculado nada, para que el endpoint funcione antes de la primera escritura.
-async function backfillCatalogVersions(): Promise<CatalogVersionDoc[]> {
-  const snapshot = await db.collection('cards')
-    .where('cardType', 'in', CATALOG_CARD_TYPES)
-    .get();
+  await db.runTransaction(async tx => {
+    const snapshot = await tx.get(ref);
+    const current = snapshot.exists ? (snapshot.data() as CatalogVersionDoc) : undefined;
 
-  const byHousehold = new Map<string, { count: number; maxUpdatedMs: number }>();
-  snapshot.docs.forEach(doc => {
-    const data = doc.data();
-    const householdId = data.householdId;
-    if (typeof householdId !== 'string' || !householdId) return;
-
-    const entry = byHousehold.get(householdId) || { count: 0, maxUpdatedMs: 0 };
-    entry.count += 1;
-    const updatedAt = toDate(data.updatedAt);
-    if (updatedAt) {
-      entry.maxUpdatedMs = Math.max(entry.maxUpdatedMs, updatedAt.getTime());
+    // Comparación lexicográfica válida: son ISO 8601 en UTC.
+    if (eventTimestamp && current?.eventTimestamp && current.eventTimestamp >= eventTimestamp) {
+      return;
     }
-    byHousehold.set(householdId, entry);
+
+    tx.set(ref, next);
   });
 
-  const computedAt = new Date().toISOString();
-  const versions: CatalogVersionDoc[] = Array.from(byHousehold.entries()).map(
-    ([householdId, entry]) => ({
-      householdId,
-      count: entry.count,
-      maxUpdatedAt: toIso(entry.maxUpdatedMs),
-      computedAt,
-    })
-  );
-
-  if (versions.length > 0) {
-    const batch = db.batch();
-    versions.forEach(version => {
-      batch.set(db.collection(CATALOG_VERSIONS_COLLECTION).doc(version.householdId), version);
-    });
-    await batch.commit();
-  }
-
-  return versions;
+  return next;
 }
 
-// Trigger: mantiene el agregado al alta, baja o modificación de una tarjeta.
+async function refreshCatalogVersion(
+  householdId: string | null,
+  eventTimestamp: string | null
+): Promise<CatalogVersionDoc> {
+  const version = await computeCatalogVersion(householdId);
+  return writeCatalogVersion(version, eventTimestamp);
+}
+
+// Trigger: mantiene los agregados al alta, baja o modificación de una tarjeta.
 export const onCardWriteRefreshCatalogVersion = functions.firestore
   .document('cards/{cardId}')
-  .onWrite(async (change) => {
+  .onWrite(async (change, context) => {
+    const eventTimestamp = context.timestamp;
+
     const householdIds = new Set<string>();
     const before = change.before.exists ? change.before.data() : undefined;
     const after = change.after.exists ? change.after.data() : undefined;
 
     // El hogar de `before` cubre la baja y el traslado entre hogares: sin él, el
-    // agregado del hogar de origen se quedaría con la tarjeta que ya no tiene.
+    // agregado del hogar de origen se quedaría contando una tarjeta que ya no tiene.
     if (typeof before?.householdId === 'string' && before.householdId) {
       householdIds.add(before.householdId);
     }
@@ -860,9 +861,34 @@ export const onCardWriteRefreshCatalogVersion = functions.firestore
       householdIds.add(after.householdId);
     }
 
-    await Promise.all(
-      Array.from(householdIds).map(householdId => refreshCatalogVersion(householdId))
-    );
+    // El global se refresca siempre, incluso sin householdId en el documento:
+    // es lo que mantiene al día las tarjetas legacy que sólo tienen userId.
+    await Promise.all([
+      refreshCatalogVersion(null, eventTimestamp),
+      ...Array.from(householdIds).map(id => refreshCatalogVersion(id, eventTimestamp)),
+    ]);
+  });
+
+// Trigger: un banco renombrado o borrado cambia el bankName —y el orden— que
+// devuelve getCardsCredit, sin tocar ninguna tarjeta. Sin esto, el consumidor
+// se quedaría con un catálogo viejo y la misma versión.
+export const onBankWriteRefreshCatalogVersion = functions.firestore
+  .document('banks/{bankId}')
+  .onWrite(async (change, context) => {
+    const eventTimestamp = context.timestamp;
+
+    // Un banco puede estar referenciado por cualquier hogar, así que se
+    // refrescan todos los agregados ya existentes. Las escrituras de banco son
+    // muy infrecuentes comparadas con las consultas.
+    const snapshot = await db.collection(CATALOG_VERSIONS_COLLECTION).get();
+    const householdIds = snapshot.docs
+      .map(doc => doc.id)
+      .filter(id => id !== GLOBAL_CATALOG_SCOPE);
+
+    await Promise.all([
+      refreshCatalogVersion(null, eventTimestamp),
+      ...householdIds.map(id => refreshCatalogVersion(id, eventTimestamp)),
+    ]);
   });
 
 // GET /api/cards/catalog-version - Comprobar si el catálogo cambió (1 lectura)
@@ -888,47 +914,25 @@ export const getCardsCatalogVersion = functions.https.onRequest(async (req, res)
   }
 
   try {
-    const householdId = req.query.householdId as string | undefined;
+    const householdId = (req.query.householdId as string | undefined) || null;
+    const scope = householdId ?? GLOBAL_CATALOG_SCOPE;
 
-    if (householdId) {
-      const doc = await db.collection(CATALOG_VERSIONS_COLLECTION).doc(householdId).get();
-      const version = doc.exists
-        ? (doc.data() as CatalogVersionDoc)
-        : await refreshCatalogVersion(householdId);
-
-      res.json({
-        success: true,
-        householdId,
-        version: catalogSignature(version.count, version.maxUpdatedAt),
-        count: version.count,
-        maxUpdatedAt: version.maxUpdatedAt,
-        computedAt: version.computedAt,
-      });
-      return;
-    }
-
-    // Sin householdId: agrega todos los hogares, igual que getCardsCredit.
-    const snapshot = await db.collection(CATALOG_VERSIONS_COLLECTION).get();
-    const versions: CatalogVersionDoc[] = snapshot.empty
-      ? await backfillCatalogVersions()
-      : snapshot.docs.map(doc => doc.data() as CatalogVersionDoc);
-
-    let count = 0;
-    let maxUpdatedMs = 0;
-    versions.forEach(version => {
-      count += version.count;
-      if (version.maxUpdatedAt) {
-        maxUpdatedMs = Math.max(maxUpdatedMs, Date.parse(version.maxUpdatedAt));
-      }
-    });
-    const maxUpdatedAt = toIso(maxUpdatedMs);
+    // Una sola lectura en ambas rutas. Si el agregado aún no existe se calcula
+    // bajo demanda, de modo que el endpoint responde sin esperar a la primera
+    // escritura sobre cards.
+    const doc = await db.collection(CATALOG_VERSIONS_COLLECTION).doc(scope).get();
+    const version = doc.exists
+      ? (doc.data() as CatalogVersionDoc)
+      : await refreshCatalogVersion(householdId, null);
 
     res.json({
       success: true,
-      version: catalogSignature(count, maxUpdatedAt),
-      count,
-      maxUpdatedAt,
-      households: versions.length,
+      scope,
+      householdId,
+      version: catalogSignature(version.count, version.maxUpdatedAt),
+      count: version.count,
+      maxUpdatedAt: version.maxUpdatedAt,
+      computedAt: version.computedAt,
     });
 
   } catch (error) {
