@@ -622,6 +622,10 @@ const validateApiToken = (req: functions.https.Request): boolean => {
   return token === apiSecret;
 };
 
+// Tipos de tarjeta que forman el catálogo bancario expuesto por la API.
+// Compartido con la versión del catálogo: si divergen, la versión miente.
+const CATALOG_CARD_TYPES = ['Visa', 'Mastercard', 'Amex'];
+
 // Helper para obtener últimos 4 dígitos
 const getLast4Digits = (cardNumber?: string): string | null => {
   if (!cardNumber) return null;
@@ -657,12 +661,12 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
 
     // Obtener tarjetas bancarias (excluir Departamental)
     let cardsQuery = db.collection('cards')
-      .where('cardType', 'in', ['Visa', 'Mastercard', 'Amex']);
+      .where('cardType', 'in', CATALOG_CARD_TYPES);
 
     if (householdId) {
       cardsQuery = db.collection('cards')
         .where('householdId', '==', householdId)
-        .where('cardType', 'in', ['Visa', 'Mastercard', 'Amex']);
+        .where('cardType', 'in', CATALOG_CARD_TYPES);
     }
 
     const cardsSnapshot = await cardsQuery.get();
@@ -732,6 +736,203 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching cards:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Versión del catálogo de tarjetas
+//
+// getCardsCredit devuelve el catálogo entero, así que preguntarle "¿cambió?"
+// cuesta lo mismo que refrescarlo: hay que leer cards y banks completas. Un
+// ETag no lo arregla, porque el hash se calcula igual leyendo todo.
+//
+// Aquí se mantiene un documento agregado por hogar, actualizado por trigger al
+// escribir en cards. La comprobación pasa a ser 1 lectura en vez de N, y el
+// borrado de una tarjeta se detecta solo: baja el count.
+// ---------------------------------------------------------------------------
+
+const CATALOG_VERSIONS_COLLECTION = 'catalog_versions';
+
+interface CatalogVersionDoc {
+  householdId: string;
+  count: number;
+  maxUpdatedAt: string | null; // ISO 8601
+  computedAt: string;          // ISO 8601
+}
+
+// Firma comparable por el consumidor: si cambia, el catálogo cambió.
+function catalogSignature(count: number, maxUpdatedAt: string | null): string {
+  return `${count}:${maxUpdatedAt ?? 'null'}`;
+}
+
+function toIso(ms: number): string | null {
+  return ms > 0 ? new Date(ms).toISOString() : null;
+}
+
+// Recalcula la versión de un hogar leyendo sus tarjetas. Caro pero infrecuente:
+// sólo corre al escribir en cards, no al consultarla.
+async function computeCatalogVersion(householdId: string): Promise<CatalogVersionDoc> {
+  const snapshot = await db.collection('cards')
+    .where('householdId', '==', householdId)
+    .where('cardType', 'in', CATALOG_CARD_TYPES)
+    .get();
+
+  let maxUpdatedMs = 0;
+  snapshot.docs.forEach(doc => {
+    const updatedAt = toDate(doc.data().updatedAt);
+    if (updatedAt) {
+      maxUpdatedMs = Math.max(maxUpdatedMs, updatedAt.getTime());
+    }
+  });
+
+  return {
+    householdId,
+    count: snapshot.size,
+    maxUpdatedAt: toIso(maxUpdatedMs),
+    computedAt: new Date().toISOString(),
+  };
+}
+
+async function refreshCatalogVersion(householdId: string): Promise<CatalogVersionDoc> {
+  const version = await computeCatalogVersion(householdId);
+  await db.collection(CATALOG_VERSIONS_COLLECTION).doc(householdId).set(version);
+  return version;
+}
+
+// Siembra la colección leyendo cards una vez. Sólo corre si nunca se ha
+// calculado nada, para que el endpoint funcione antes de la primera escritura.
+async function backfillCatalogVersions(): Promise<CatalogVersionDoc[]> {
+  const snapshot = await db.collection('cards')
+    .where('cardType', 'in', CATALOG_CARD_TYPES)
+    .get();
+
+  const byHousehold = new Map<string, { count: number; maxUpdatedMs: number }>();
+  snapshot.docs.forEach(doc => {
+    const data = doc.data();
+    const householdId = data.householdId;
+    if (typeof householdId !== 'string' || !householdId) return;
+
+    const entry = byHousehold.get(householdId) || { count: 0, maxUpdatedMs: 0 };
+    entry.count += 1;
+    const updatedAt = toDate(data.updatedAt);
+    if (updatedAt) {
+      entry.maxUpdatedMs = Math.max(entry.maxUpdatedMs, updatedAt.getTime());
+    }
+    byHousehold.set(householdId, entry);
+  });
+
+  const computedAt = new Date().toISOString();
+  const versions: CatalogVersionDoc[] = Array.from(byHousehold.entries()).map(
+    ([householdId, entry]) => ({
+      householdId,
+      count: entry.count,
+      maxUpdatedAt: toIso(entry.maxUpdatedMs),
+      computedAt,
+    })
+  );
+
+  if (versions.length > 0) {
+    const batch = db.batch();
+    versions.forEach(version => {
+      batch.set(db.collection(CATALOG_VERSIONS_COLLECTION).doc(version.householdId), version);
+    });
+    await batch.commit();
+  }
+
+  return versions;
+}
+
+// Trigger: mantiene el agregado al alta, baja o modificación de una tarjeta.
+export const onCardWriteRefreshCatalogVersion = functions.firestore
+  .document('cards/{cardId}')
+  .onWrite(async (change) => {
+    const householdIds = new Set<string>();
+    const before = change.before.exists ? change.before.data() : undefined;
+    const after = change.after.exists ? change.after.data() : undefined;
+
+    // El hogar de `before` cubre la baja y el traslado entre hogares: sin él, el
+    // agregado del hogar de origen se quedaría con la tarjeta que ya no tiene.
+    if (typeof before?.householdId === 'string' && before.householdId) {
+      householdIds.add(before.householdId);
+    }
+    if (typeof after?.householdId === 'string' && after.householdId) {
+      householdIds.add(after.householdId);
+    }
+
+    await Promise.all(
+      Array.from(householdIds).map(householdId => refreshCatalogVersion(householdId))
+    );
+  });
+
+// GET /api/cards/catalog-version - Comprobar si el catálogo cambió (1 lectura)
+export const getCardsCatalogVersion = functions.https.onRequest(async (req, res) => {
+  // CORS headers
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+
+  if (req.method !== 'GET') {
+    res.status(405).json({ success: false, error: 'Method not allowed' });
+    return;
+  }
+
+  if (!validateApiToken(req)) {
+    res.status(401).json({ success: false, error: 'Unauthorized' });
+    return;
+  }
+
+  try {
+    const householdId = req.query.householdId as string | undefined;
+
+    if (householdId) {
+      const doc = await db.collection(CATALOG_VERSIONS_COLLECTION).doc(householdId).get();
+      const version = doc.exists
+        ? (doc.data() as CatalogVersionDoc)
+        : await refreshCatalogVersion(householdId);
+
+      res.json({
+        success: true,
+        householdId,
+        version: catalogSignature(version.count, version.maxUpdatedAt),
+        count: version.count,
+        maxUpdatedAt: version.maxUpdatedAt,
+        computedAt: version.computedAt,
+      });
+      return;
+    }
+
+    // Sin householdId: agrega todos los hogares, igual que getCardsCredit.
+    const snapshot = await db.collection(CATALOG_VERSIONS_COLLECTION).get();
+    const versions: CatalogVersionDoc[] = snapshot.empty
+      ? await backfillCatalogVersions()
+      : snapshot.docs.map(doc => doc.data() as CatalogVersionDoc);
+
+    let count = 0;
+    let maxUpdatedMs = 0;
+    versions.forEach(version => {
+      count += version.count;
+      if (version.maxUpdatedAt) {
+        maxUpdatedMs = Math.max(maxUpdatedMs, Date.parse(version.maxUpdatedAt));
+      }
+    });
+    const maxUpdatedAt = toIso(maxUpdatedMs);
+
+    res.json({
+      success: true,
+      version: catalogSignature(count, maxUpdatedAt),
+      count,
+      maxUpdatedAt,
+      households: versions.length,
+    });
+
+  } catch (error) {
+    console.error('Error fetching catalog version:', error);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });
