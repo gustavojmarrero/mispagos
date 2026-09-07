@@ -761,16 +761,31 @@ const CATALOG_VERSIONS_COLLECTION = 'catalog_versions';
 const GLOBAL_CATALOG_SCOPE = '__global__';
 
 interface CatalogVersionDoc {
-  scope: string;                  // householdId, o GLOBAL_CATALOG_SCOPE
+  scope: string;                    // householdId, o GLOBAL_CATALOG_SCOPE
   count: number;
-  maxUpdatedAt: string | null;    // ISO 8601
-  computedAt: string;             // ISO 8601
-  eventTimestamp: string | null;  // evento que produjo este valor; null si se calculó bajo demanda
+  maxUpdatedAt: string | null;      // ISO 8601
+  banksCount: number;
+  banksMaxUpdatedAt: string | null; // ISO 8601
+  computedAt: string;               // ISO 8601
+  eventTimestamp: string | null;    // evento que produjo este valor; null si se calculó bajo demanda
 }
 
 // Firma comparable por el consumidor: si cambia, el catálogo cambió.
-function catalogSignature(count: number, maxUpdatedAt: string | null): string {
-  return `${count}:${maxUpdatedAt ?? 'null'}`;
+// Incluye el estado de banks porque getCardsCredit resuelve bankName contra esa
+// colección: renombrar un banco cambia la respuesta sin tocar ninguna tarjeta,
+// y con sólo el conteo de tarjetas la firma se quedaría igual.
+function catalogSignature(version: {
+  count: number;
+  maxUpdatedAt: string | null;
+  banksCount: number;
+  banksMaxUpdatedAt: string | null;
+}): string {
+  return [
+    version.count,
+    version.maxUpdatedAt ?? 'null',
+    version.banksCount,
+    version.banksMaxUpdatedAt ?? 'null',
+  ].join(':');
 }
 
 function toIso(ms: number): string | null {
@@ -789,20 +804,30 @@ async function computeCatalogVersion(householdId: string | null): Promise<Catalo
       .where('cardType', 'in', CATALOG_CARD_TYPES);
   }
 
-  const snapshot = await query.get();
+  // banks va sin filtrar, igual que en getCardsCredit, que construye su lookup
+  // con la colección entera.
+  const [snapshot, banksSnapshot] = await Promise.all([
+    query.get(),
+    db.collection('banks').get(),
+  ]);
 
-  let maxUpdatedMs = 0;
-  snapshot.docs.forEach(doc => {
-    const updatedAt = toDate(doc.data().updatedAt);
-    if (updatedAt) {
-      maxUpdatedMs = Math.max(maxUpdatedMs, updatedAt.getTime());
-    }
-  });
+  const maxUpdatedMs = (docs: admin.firestore.QueryDocumentSnapshot[]): number => {
+    let max = 0;
+    docs.forEach(doc => {
+      const updatedAt = toDate(doc.data().updatedAt);
+      if (updatedAt) {
+        max = Math.max(max, updatedAt.getTime());
+      }
+    });
+    return max;
+  };
 
   return {
     scope: householdId ?? GLOBAL_CATALOG_SCOPE,
     count: snapshot.size,
-    maxUpdatedAt: toIso(maxUpdatedMs),
+    maxUpdatedAt: toIso(maxUpdatedMs(snapshot.docs)),
+    banksCount: banksSnapshot.size,
+    banksMaxUpdatedAt: toIso(maxUpdatedMs(banksSnapshot.docs)),
     computedAt: new Date().toISOString(),
     eventTimestamp: null,
   };
@@ -819,19 +844,27 @@ async function writeCatalogVersion(
   const ref = db.collection(CATALOG_VERSIONS_COLLECTION).doc(version.scope);
   const next: CatalogVersionDoc = { ...version, eventTimestamp };
 
+  let winner = next;
+
   await db.runTransaction(async tx => {
+    winner = next; // la transacción puede reintentarse
     const snapshot = await tx.get(ref);
     const current = snapshot.exists ? (snapshot.data() as CatalogVersionDoc) : undefined;
 
-    // Comparación lexicográfica válida: son ISO 8601 en UTC.
-    if (eventTimestamp && current?.eventTimestamp && current.eventTimestamp >= eventTimestamp) {
-      return;
+    if (current?.eventTimestamp) {
+      // Un cálculo bajo demanda no lleva evento y su snapshot puede ser anterior
+      // al del trigger que ya escribió: nunca debe pisarlo.
+      // Entre eventos, comparación lexicográfica válida por ser ISO 8601 en UTC.
+      if (!eventTimestamp || current.eventTimestamp >= eventTimestamp) {
+        winner = current;
+        return;
+      }
     }
 
     tx.set(ref, next);
   });
 
-  return next;
+  return winner;
 }
 
 async function refreshCatalogVersion(
@@ -929,9 +962,11 @@ export const getCardsCatalogVersion = functions.https.onRequest(async (req, res)
       success: true,
       scope,
       householdId,
-      version: catalogSignature(version.count, version.maxUpdatedAt),
+      version: catalogSignature(version),
       count: version.count,
       maxUpdatedAt: version.maxUpdatedAt,
+      banksCount: version.banksCount,
+      banksMaxUpdatedAt: version.banksMaxUpdatedAt,
       computedAt: version.computedAt,
     });
 
