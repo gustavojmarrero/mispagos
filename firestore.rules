@@ -121,6 +121,11 @@ service cloud.firestore {
       allow update, delete: if canAccessResource(resource.data);
     }
 
+    // catalog_versions: agregado que mantiene el trigger onCardWrite de Cloud
+    // Functions y que sirve getCardsCatalogVersion. Sólo lo toca el Admin SDK,
+    // que no pasa por estas reglas; ningún cliente debe leerlo ni escribirlo,
+    // así que queda cubierto por el deny de abajo.
+
     // Deny all other access
     match /{document=**} {
       allow read, write: if false;
