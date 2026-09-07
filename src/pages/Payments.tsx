@@ -694,6 +694,7 @@ export function Payments() {
       p.id !== excludePaymentId &&
       p.paymentType === 'card_payment' &&
       p.cardId === cardId &&
+      p.isActive &&
       p.paymentDate &&
       p.paymentDate.getMonth() === paymentDate.getMonth() &&
       p.paymentDate.getFullYear() === paymentDate.getFullYear()
