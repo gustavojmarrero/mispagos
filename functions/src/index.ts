@@ -756,9 +756,11 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
 const CATALOG_VERSIONS_COLLECTION = 'catalog_versions';
 
 // Agregado de todos los hogares, espejo de getCardsCredit sin householdId.
-// Los householdId son UIDs de Firebase Auth (alfanuméricos), así que este id
-// no puede colisionar con uno real.
-const GLOBAL_CATALOG_SCOPE = '__global__';
+// Los householdId son UIDs de Firebase Auth (alfanuméricos), así que un id que
+// empieza por guion bajo no puede colisionar con uno real.
+// No usar '__global__': Firestore rechaza con INVALID_ARGUMENT todo id que
+// empiece y termine en doble guion bajo, por reservado.
+const GLOBAL_CATALOG_SCOPE = '_global';
 
 interface CatalogVersionDoc {
   scope: string;                    // householdId, o GLOBAL_CATALOG_SCOPE
