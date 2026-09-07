@@ -26,6 +26,7 @@ interface Card {
   id: string;
   name: string;
   cardType: string;
+  updatedAt?: unknown;
   physicalCardNumber?: string;
   digitalCardNumber?: string;
   physicalCards?: PhysicalCard[];
@@ -99,6 +100,8 @@ interface EnsurePaymentInstancesData {
 }
 
 interface PhysicalCardResponse {
+  // UUID estable de la tarjeta física; null en documentos legacy sin physicalCards[]
+  id: string | null;
   label: string;
   lastDigitsPhysical: string | null;
   lastDigitsDigital: string | null;
@@ -115,6 +118,8 @@ interface CardResponse {
   availableCredit: number;
   creditLimit: number;
   cardType: string;
+  // ISO 8601, para que los consumidores invaliden cache por max(updatedAt)
+  updatedAt: string | null;
 }
 
 function toDate(value: unknown): Date | undefined {
@@ -683,6 +688,7 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
       let physicalCards: PhysicalCardResponse[];
       if (card.physicalCards && card.physicalCards.length > 0) {
         physicalCards = card.physicalCards.map(pc => ({
+          id: pc.id ?? null,
           label: pc.label,
           lastDigitsPhysical: getLast4Digits(pc.number),
           lastDigitsDigital: getLast4Digits(pc.digitalNumber) || getLast4Digits(card.digitalCardNumber),
@@ -690,6 +696,7 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
       } else {
         // Fallback a campos legacy
         physicalCards = [{
+          id: null,
           label: card.owner,
           lastDigitsPhysical: getLast4Digits(card.physicalCardNumber),
           lastDigitsDigital: getLast4Digits(card.digitalCardNumber),
@@ -707,6 +714,7 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
         availableCredit: card.availableCredit,
         creditLimit: card.creditLimit,
         cardType: card.cardType,
+        updatedAt: toDate(card.updatedAt)?.toISOString() ?? null,
       };
     });
 
