@@ -688,8 +688,8 @@ export function Payments() {
     const month = paymentDate.toLocaleString('es-ES', { month: 'long' });
     const year = paymentDate.getFullYear();
 
-    // Contar pagos existentes para esta tarjeta en este mes/año
-    // (al editar, excluir el propio pago para no numerarlo como "2do pago")
+    // Pagos existentes para esta tarjeta en este mes/año
+    // (al editar, excluir el propio pago para no contarse a sí mismo)
     const existingPayments = payments.filter(p =>
       p.id !== excludePaymentId &&
       p.paymentType === 'card_payment' &&
@@ -699,7 +699,11 @@ export function Payments() {
       p.paymentDate.getFullYear() === paymentDate.getFullYear()
     );
 
-    const paymentNumber = existingPayments.length + 1;
+    // El ordinal se calcula por posición cronológica, no por conteo: al editar
+    // un pago anterior debe conservar su número en vez de recibir el siguiente.
+    const paymentNumber = existingPayments.filter(
+      p => p.paymentDate!.getTime() <= paymentDate.getTime()
+    ).length + 1;
 
     if (paymentNumber === 1) {
       return `Pago para no generar intereses ${month}/${year}`;
