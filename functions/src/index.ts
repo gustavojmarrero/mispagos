@@ -656,20 +656,29 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
     return;
   }
 
+  // householdId obligatorio: sin él la query iba contra toda la colección cards
+  // y devolvía tarjetas de todos los hogares. El consumidor (intranet Guatever)
+  // lo manda desde el 2026-09-17.
+  const householdId = typeof req.query.householdId === 'string'
+    ? req.query.householdId.trim()
+    : '';
+
+  if (!householdId) {
+    // Se registra el origen para rastrear consumidores que aún no lo mandan.
+    console.warn('getCardsCredit rechazado sin householdId', {
+      userAgent: req.get('user-agent') ?? null,
+      forwardedFor: req.get('x-forwarded-for') ?? null,
+    });
+    res.status(400).json({ success: false, error: 'householdId is required' });
+    return;
+  }
+
   try {
-    const householdId = req.query.householdId as string | undefined;
-
     // Obtener tarjetas bancarias (excluir Departamental)
-    let cardsQuery = db.collection('cards')
-      .where('cardType', 'in', CATALOG_CARD_TYPES);
-
-    if (householdId) {
-      cardsQuery = db.collection('cards')
-        .where('householdId', '==', householdId)
-        .where('cardType', 'in', CATALOG_CARD_TYPES);
-    }
-
-    const cardsSnapshot = await cardsQuery.get();
+    const cardsSnapshot = await db.collection('cards')
+      .where('householdId', '==', householdId)
+      .where('cardType', 'in', CATALOG_CARD_TYPES)
+      .get();
 
     if (cardsSnapshot.empty) {
       res.json({ success: true, cards: [] });
@@ -755,7 +764,8 @@ export const getCardsCredit = functions.https.onRequest(async (req, res) => {
 
 const CATALOG_VERSIONS_COLLECTION = 'catalog_versions';
 
-// Agregado de todos los hogares, espejo de getCardsCredit sin householdId.
+// Agregado de todos los hogares. Era el espejo de getCardsCredit sin householdId,
+// que ya no se admite; sigue vivo porque getCardsCatalogVersion aún lo acepta.
 // Los householdId son UIDs de Firebase Auth (alfanuméricos), así que un id que
 // empieza por guion bajo no puede colisionar con uno real.
 // No usar '__global__': Firestore rechaza con INVALID_ARGUMENT todo id que
@@ -798,7 +808,7 @@ function toIso(ms: number): string | null {
 // Recalcula un agregado leyendo las tarjetas que lo componen. Caro pero
 // infrecuente: sólo corre al escribir, o la primera vez que se consulta.
 // Sin householdId cubre el catálogo global, incluidas las tarjetas legacy que
-// sólo tienen userId — las mismas que devuelve getCardsCredit sin filtrar.
+// sólo tienen userId — las que devolvía getCardsCredit sin filtrar.
 async function computeCatalogVersion(householdId: string | null): Promise<CatalogVersionDoc> {
   let query = db.collection('cards').where('cardType', 'in', CATALOG_CARD_TYPES);
   if (householdId) {
