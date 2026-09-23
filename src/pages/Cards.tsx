@@ -490,7 +490,8 @@ export function Cards() {
       // Preparar datos sin formato para guardar en la base de datos
       // Procesar physicalCards: limpiar números
       const cleanedPhysicalCards = (formData.physicalCards || [])
-        .filter(card => card.number.trim() !== '') // Filtrar tarjetas sin número
+        // Descartar sólo las entradas vacías: un titular puede tener únicamente tarjeta digital
+        .filter(card => card.number.trim() !== '' || (card.digitalNumber || '').trim() !== '')
         .map(card => ({
           id: card.id,
           number: unformatCardNumber(card.number),
